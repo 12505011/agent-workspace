@@ -1,0 +1,18 @@
+# Secrets and machine-local state
+.env
+.env.*
+*.pem
+*.key
+*.token
+
+# Raw conversation/session state
+sessions/
+*.jsonl
+
+# Large generated files
+*.pcd
+*.bag
+*.tar
+*.tar.gz
+*.zip
+*.log
