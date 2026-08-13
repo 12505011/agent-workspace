@@ -100,10 +100,11 @@ ros2 topic echo --once /maptr_pointcloud --no-arr
 
 The captured runtime profile from
 `issue/maptr_test/3/dcu-1/qprofile/welldrive/qthd/perception_q/profile.yaml`
-does not select a literal `dl_bevfusion_lidar_only` pipeline step. Its selected
-step is `type: dl_bevfusion` in `pipline-dl_bevfusion_cluster`; whether that
-implementation selects LiDAR-only engines internally depends on its vehicle
-configuration and should not be inferred from the pipeline name.
+selects the generic pipeline step name `type: dl_bevfusion` in
+`pipline-dl_bevfusion_cluster`. Per deployment-owner confirmation, this qthd
+deployment runs that step in its LiDAR-only mode; the generic YAML type name
+must not be interpreted as camera fusion. The deployed parallel combination is
+therefore LiDAR-only detection plus three-camera MapTR.
 
 The captured run is not evidence of a MapTR CUDA/TensorRT failure:
 
