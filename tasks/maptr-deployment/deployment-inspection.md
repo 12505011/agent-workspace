@@ -96,6 +96,47 @@ ros2 topic hz /maptr_pointcloud
 ros2 topic echo --once /maptr_pointcloud --no-arr
 ```
 
+## 2026-08-13 vehicle-stop evidence review
+
+The captured runtime profile from
+`issue/maptr_test/3/dcu-1/qprofile/welldrive/qthd/perception_q/profile.yaml`
+does not select a literal `dl_bevfusion_lidar_only` pipeline step. Its selected
+step is `type: dl_bevfusion` in `pipline-dl_bevfusion_cluster`; whether that
+implementation selects LiDAR-only engines internally depends on its vehicle
+configuration and should not be inferred from the pipeline name.
+
+The captured run is not evidence of a MapTR CUDA/TensorRT failure:
+
+- In `maptr_test/3`, MapTR has no `MapTR core initialized`, `MapTR forward
+  failed`, CUDA error, TensorRT error, or decoder-init-failure log entry.
+- At `2026-08-13T02:56:19.700Z`, before any MapTR initialization record,
+  the four LiDAR subscriber executors (`front_top`, `front_left_up`,
+  `front_right_down`, `front_left_down`) all reach their queue threshold of
+  10 and reject tasks.
+- The sensor monitor then repeatedly publishes error `4124130`; the keeper
+  error catalogue defines it as `lidar_driver: some lidars is wrong.`
+
+This establishes an input-side LiDAR queue-overrun/data-loss safety fault for
+the captured stop. It does **not** establish that enabling MapTR caused the
+overrun: `maptr_test/1` contains successful concurrent MapTR and
+`dl_bevfusion` timing logs (MapTR forward average about 33 ms, while the
+`dl_bevfusion` step is roughly 70--90 ms), and no CUDA/MapTR forward failure.
+
+Two configuration inconsistencies still need correcting before a controlled
+on-vehicle reproduction:
+
+1. The local `qbaize_play.yaml` has `camera_undistort=false`, while this
+   MapTR profile requires a Player-undistorted `1400 x 1000` image then crops
+   it to `960 x 768`. This local replay cannot validate the vehicle camera
+   preprocessing contract as written.
+2. The local player YAML has `det_obj_module` commented out. It is therefore
+   not a faithful replay of concurrent object detection plus MapTR.
+
+For the next vehicle test, capture the exact effective runtime profile,
+module loader manifest, GPU memory/utilisation, each LiDAR callback queue/drop
+count, and MapTR init/forward timing in the same timestamp interval. The
+acceptance criterion is zero `4124130` while both algorithm paths are active.
+
 ## Source anchors
 
 - Node configuration, subscriptions and trigger: `maptr_node.cpp`.
