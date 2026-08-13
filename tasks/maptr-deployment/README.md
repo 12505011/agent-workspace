@@ -23,12 +23,14 @@ Inspect and document the MapTR deployment implementation under:
 
 ## Initial checklist
 
-- [ ] Locate build targets and runtime initialization entry points.
-- [ ] Identify profile fields that select MapTR engines and camera count.
-- [ ] Identify required TensorRT plans and plugin loading behavior.
-- [ ] Trace input preprocessing and output/publication path.
-- [ ] Record deployment risks and verification commands.
+- [x] Locate build targets and runtime initialization entry points.
+- [x] Identify profile fields that select MapTR engines and camera count.
+- [x] Identify required TensorRT plans and plugin loading behavior.
+- [x] Trace input preprocessing and output/publication path.
+- [x] Record deployment risks and verification commands.
 
 ## Handoff notes
 
-- 2026-08-13: Task branch created. Source inspection has not started.
+- 2026-08-13: Task branch created and source inspection completed. Verified
+  findings are in `deployment-inspection.md`; no perception runtime code or
+  profile was changed.
