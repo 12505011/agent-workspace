@@ -216,3 +216,14 @@ one instance into another.
 - Output `PointCloud2` layout: `dl_bevfusion_maptr_pointcloud.cpp`.
 - Build targets and linked CUDA/TensorRT dependencies:
   `CUDA-BEVFusion/CMakeLists.txt`.
+
+## 2026-08-17 55m parallel profile
+
+`profile_project` branch `release-test-maptralone-parallel-5.6-55` was created
+from `release-test-maptralone-parallel-5.6` and pushed at `7e1947358`.
+It selects
+`maptr_0807_x0_55_bev060_decoder4/build_rtx3060_cuda114_trt8522_fp16`, with
+`pc_range: [0.0, -10.0, 55.0, 10.0]`, `bev_pool_width: 91`, and `bev_w: 46`.
+Those dimensions were verified against the engine's vtransform contract:
+input `1x256x33x91`, output `1x256x17x46`. Required plan files and plugin are
+present and non-empty; the profile YAML parses successfully.
