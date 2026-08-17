@@ -176,20 +176,20 @@ perception_q:
         visualization:
           enabled: false
           point_spacing_m: 0.1
-        crop_player_undistorted_input: false
+        crop_player_undistorted_input: true
+        enable_perf_timing: false
 ```
 
-Both deployment branches now disable vehicle-side visualization and Player
-undistorted-input cropping.  With cropping disabled, the supplied camera
-stream itself must match the model's expected stream geometry; the earlier
-1400x1000 Player stream requires the crop option to be re-enabled.
+Both deployment branches now disable vehicle-side visualization and performance
+timing logs, while enabling Player undistorted-input cropping for the padded
+1400x1000 Player stream.
 
 The changes were committed and pushed in both branches of both repositories:
 
 | repository | normal | parallel |
 | --- | --- | --- |
 | `src/perception_q` | `af94ed99e` | `21b9bc92a` |
-| `src/profile_project` | `c06d86278` | `9faf9dff7` |
+| `src/profile_project` | `338201276` | `f8289a664` |
 
 The local ROS playback router was also updated to forward
 `maptr_pointcloud_vis`; otherwise the topic would remain invisible to RViz.
