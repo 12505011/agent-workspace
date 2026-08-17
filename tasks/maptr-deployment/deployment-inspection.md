@@ -138,6 +138,62 @@ module loader manifest, GPU memory/utilisation, each LiDAR callback queue/drop
 count, and MapTR init/forward timing in the same timestamp interval. The
 acceptance criterion is zero `4124130` while both algorithm paths are active.
 
+## 2026-08-17 raw-instance output contract
+
+Both 5.6 deployment variants were updated locally after confirming that the
+runtime already holds the original decoder output as a vector of
+`MapTRInstance { label, score, ordered points }`, but the old publication path
+resampled every segment at 0.1 m and discarded its instance membership.
+
+`maptr_pointcloud` is now the algorithm-facing, non-resampled output.  It has
+one record per original decoder point (the active cnwxijk profile specifies 15
+points per vector) and exposes these `PointCloud2` fields:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `x`, `y`, `z` | `FLOAT32` | original MapTR point coordinates |
+| `intensity` | `FLOAT32` | MapTR class label |
+| `rgb` | `FLOAT32` bits | `0x00RRGGBB` class colour for generic viewers |
+| `score` | `FLOAT32` | prediction confidence, repeated for its instance points |
+| `instance_id` | `UINT32` | frame-local post-threshold instance index |
+| `point_index` | `UINT32` | original ordered point index inside the instance |
+
+The record size is 48 bytes. `instance_id` is intentionally documented as
+frame-local: it is not a MapTR temporal tracking token.
+
+The new optional `maptr_pointcloud_vis` topic is visualization-only.  When
+enabled it keeps the former RGB point-cloud style and may resample at a
+configured spacing so RViz displays visually continuous lines. It must not be
+used as an algorithm input.
+
+The profile switch is at:
+
+```yaml
+perception_q:
+  dl_bevfusion_maptr:
+    params:
+      maptr:
+        visualization:
+          enabled: true
+          point_spacing_m: 0.1
+```
+
+It was committed locally in both branches of both repositories:
+
+| repository | normal | parallel |
+| --- | --- | --- |
+| `src/perception_q` | `af94ed99e` | `21b9bc92a` |
+| `src/profile_project` | `ee1c1cd21` | `d7477ee32` |
+
+The local ROS playback router was also updated to forward
+`maptr_pointcloud_vis`; otherwise the topic would remain invisible to RViz.
+Validation: the normal-branch modified objects compiled in
+`baize-welldriver-wviz-1`; its final library link remains blocked by the
+pre-existing missing `/opt/qomolo/welldrive/lib/libexternal_msg.so.5.6.9-0`.
+The parallel branch's modified `dl_bevfusion_maptr_pointcloud.cpp` and
+`maptr_node.cpp` objects compiled successfully after its CMake target was
+configured in the same container. Both profile YAML files parse successfully.
+
 ## Source anchors
 
 - Node configuration, subscriptions and trigger: `maptr_node.cpp`.
