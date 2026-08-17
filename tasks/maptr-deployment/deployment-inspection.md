@@ -189,7 +189,7 @@ The changes were committed and pushed in both branches of both repositories:
 | repository | normal | parallel |
 | --- | --- | --- |
 | `src/perception_q` | `af94ed99e` | `21b9bc92a` |
-| `src/profile_project` | `338201276` | `f8289a664` |
+| `src/perception_q_profile_project` | `512369c` | `45082bd` |
 
 The local ROS playback router was also updated to forward
 `maptr_pointcloud_vis`; otherwise the topic would remain invisible to RViz.
