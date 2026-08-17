@@ -194,6 +194,13 @@ The parallel branch's modified `dl_bevfusion_maptr_pointcloud.cpp` and
 `maptr_node.cpp` objects compiled successfully after its CMake target was
 configured in the same container. Both profile YAML files parse successfully.
 
+For recordings made with visualization disabled, the local standalone ROS2
+converter is `/data/baize/baize-welldriver/runqfile/maptr_pointcloud_to_vis_ros2.py`.
+It subscribes to raw `maptr_pointcloud`, groups by `instance_id`, orders by
+`point_index`, and publishes a dense `maptr_pointcloud_vis` display topic. A
+two-instance synthetic ROS2 test verified that it does not interpolate from
+one instance into another.
+
 ## Source anchors
 
 - Node configuration, subscriptions and trigger: `maptr_node.cpp`.
