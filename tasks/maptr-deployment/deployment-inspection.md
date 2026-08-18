@@ -222,11 +222,16 @@ one instance into another.
 The canonical deployment profile repository is
 `src/perception_q_profile_project` (not the local-test copy in
 `src/profile_project`). Its `release-test-maptralone-parallel-5.6-55` branch
-was created from `release-test-maptralone-parallel-5.6` and pushed at
-`c45f849`. It selects the packaged runtime directory
+was created from `release-test-maptralone-parallel-5.6`; its latest pushed
+commit is `bc57a50`. It selects the packaged runtime directory
 `/opt/qomolo/qpilot-resource/perception/model/dl_maptr_55`, which must contain
 the `maptr_0807_x0_55_bev060_decoder4` engine artifacts, with
 `pc_range: [0.0, -10.0, 55.0, 10.0]`, `bev_pool_width: 91`, and `bev_w: 46`.
 Those dimensions were verified against the engine's vtransform contract:
 input `1x256x33x91`, output `1x256x17x46`. Required plan files and plugin are
 present and non-empty; the profile YAML parses successfully.
+
+The 55m DepthNet binding exposes `maptr_depth_weights` as `3x118x22x40`.
+Therefore its profile must use `depth_bin_start: 1.0`, `depth_bin_end: 60.0`,
+and `depth_bin_step: 0.5`; the 30m model's end depth of `65.0` produces 128
+bins and makes MapTR Core initialization fail with `DepthNet shape mismatch`.
