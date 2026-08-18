@@ -235,3 +235,5 @@ The 55m DepthNet binding exposes `maptr_depth_weights` as `3x118x22x40`.
 Therefore its profile must use `depth_bin_start: 1.0`, `depth_bin_end: 60.0`,
 and `depth_bin_step: 0.5`; the 30m model's end depth of `65.0` produces 128
 bins and makes MapTR Core initialization fail with `DepthNet shape mismatch`.
+The local-test copy in `src/profile_project` was synchronized to the same
+55m depth contract and pushed at `5400e98de`.
