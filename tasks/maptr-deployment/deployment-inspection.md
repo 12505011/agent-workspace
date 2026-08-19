@@ -237,3 +237,16 @@ and `depth_bin_step: 0.5`; the 30m model's end depth of `65.0` produces 128
 bins and makes MapTR Core initialization fail with `DepthNet shape mismatch`.
 The local-test copy in `src/profile_project` was synchronized to the same
 55m depth contract and pushed at `5400e98de`.
+
+## 2026-08-19 recorded raw-output verification
+
+Directly decoded the first buffer of
+`issue/jk/5.6/5.6.281-test/dcu-1/qfile/perception/maptr_pointcloud/20260818_091238.qfile`
+with `qfilesrc`.  Its `PointCloud2` schema is the raw 48-byte layout:
+`x@0`, `y@4`, `z@8`, `intensity@16` (MapTR class ID as float), `rgb@20`,
+`score@24`, `instance_id@32` (`uint32`), and `point_index@36` (`uint32`).
+The first decoded frame has `width=60`, `point_step=48`, and `row_step=2880`:
+four frame-local instances, each with ordered `point_index=0..14`.  This
+verifies that the recording uses the original 15 decoder points per vector,
+not the former 0.1 m visualization resampling.  `instance_id` permits
+reconstructing a line within a frame but is not a temporal track ID.
