@@ -201,3 +201,33 @@ workflows.
   schedule spans the full training run. No optimizer, LR policy, data PKL,
   model, or decoder setting changed. Per user direction, training is run on
   4090_8 rather than locally.
+
+### 2026-08-20: PV auxiliary-label crop alignment
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `48f89e4` (pushed).
+- Training initially failed in `VectorizedLocalMap.gen_vectorized_samples`:
+  the Pillow image path supplied `pad_shape=(960, 768)`, while the legacy PV
+  mask code expected a list of per-camera shapes and attempted to subscript
+  the integer `pad_shape[0]`.
+- The PV mask generator now derives camera count and H/W from the final image
+  tensor (`N,C,H,W`), matching the actual `256x704` augmented input. It also
+  projects to raw pixels, applies `img_aug_matrix` after perspective division,
+  then scales by the configured `feat_down_sample=16`; the old fixed `/32`
+  raw-projection path was geometrically inconsistent with cropped inputs.
+- A regression unittest covers nonzero crop translation. Per user convention,
+  code was committed and pushed locally without local execution; validate on
+  4090_8 after pull before restarting distributed training.
+
+### 2026-08-20: ImageAug3D final-shape metadata
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `7a94342` (pushed).
+- After the PV-label fix allowed the first batch to reach the model, training
+  failed in `LSSTransform.create_frustum`: `img_shape` still contained the
+  Pillow loader's raw `(960,768)` tuple, while the encoder expected a list of
+  per-camera final shapes.
+- `ImageAug3D` now preserves raw `ori_shape` but updates `img_shape` and
+  `pad_shape` to one `(H,W,C)` entry per augmented view. For the active
+  long-range config this is three copies of `(256,704,3)`, yielding the
+  expected `/16` LSS feature geometry `16x44`.
+- A regression unittest covers the multiview metadata contract. Per user
+  convention, validation is performed on 4090_8 after pull.
