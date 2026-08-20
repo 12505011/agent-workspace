@@ -36,8 +36,9 @@ workflows.
 ### 2026-08-20: Shared-BEV model experiment
 
 - Source branch: `bev_3dod_maptr_multiscale_bev` at commit `a070a83`.
-- Experiment branch: `bev_3dod_maptr_shared_bev` at commit `d14f81b`
-  (`feat(maptr): share one BEV trunk across tasks`).
+- Experiment branch: `bev_3dod_maptr_shared_bev` at commit `8d65bd8`.
+  The initial shared-trunk implementation is `d14f81b`; Westwell dataset,
+  decoder-opt, and BEVFusion image-pipeline alignment is `8d65bd8`.
 - The source branch is genuinely multi-scale in BEV space, not image space:
   `DualScaleDepthLSSTransform` runs one DepthNet/context pass and two BEV
   pooling operations. Its object grid covers `[-54, 54]^2` at 0.6 m, while
@@ -53,6 +54,27 @@ workflows.
 - Shared-BEV configs live under
   `projects/configs/maptrv2/bevfusion_maptr_shared_bev_*.py`; outputs use
   `work_dirs/shared_bev/` to avoid collisions with multi-scale experiments.
+- The Westwell entry point is
+  `projects/configs/maptrv2/westwell/bevfusion_maptr_shared_bev_nuscenes2_long_range.py`.
+  It uses source camera names `CAM_FRONT_TOP_MID`, `CAM_FRONT_MID_LEFT`, and
+  `CAM_FRONT_MID_RIGHT`, the decoder-opt 55 m PKLs, six map classes, and the
+  Westwell BEVFusion object classes/name mapping.
+- The decoder-opt branch has no MapTR decoder source-code delta from the
+  shared ancestor. Its relevant contract is configuration-level: 40 vectors,
+  15 points per vector, four decoder layers, no one-to-many queries, and a
+  `17x46` long-range BEV. The shared-BEV config now uses the same contract.
+- Camera-bearing shared-BEV configs now use the Westwell BEVFusion 2D image
+  pipeline: Pillow/RGB loading, `ImageAug3D` to `256x704`, train resize
+  `[0.38,0.55]`, test resize `0.48`, train rotation `[-5.4,5.4]`, optional
+  horizontal flip, and ImageNet normalization. The former fixed MapTR
+  resize/pad path is removed from these configs.
+- For the multi-task trunk, image feature extraction is already common to
+  both baselines (`ResNet-50 + GeneralizedLSSFPN`). The shared model follows
+  BEVFusion after that point: `DepthLSSTransform`, LiDAR `SparseEncoder`,
+  `ConvFuser`, then one `SECOND + SECONDFPN` BEV trunk. Detection consumes the
+  full 512-channel BEV; MapTR crops the forward region and uses a lightweight
+  512-to-256 adapter plus only its vector decoder. It does not retain MapTR's
+  private LSS encoder.
 - Validation passed for Python compilation, all config loads, architecture
   contracts, tensor crop shape/axis order, and full model construction after
   temporarily disabling ResNet pretrained loading. A normal local build and
