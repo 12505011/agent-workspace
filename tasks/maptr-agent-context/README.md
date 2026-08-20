@@ -81,3 +81,21 @@ workflows.
   one-batch training test remain blocked by missing local dependencies,
   including `ckpts/resnet50-19c8e357.pth`, training PKLs, and the stage-1
   checkpoint.
+
+### 2026-08-20: Decoder-opt image augmentation alignment
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `8562680` (pushed to
+  `origin/bev_3dod_maptr_decoder_opt`). Only this active branch was changed.
+- The active Westwell base, CNWXIJK, 30 m, and 55 m decoder-opt configs now
+  use the BEVFusion image contract: Pillow/RGB loading, `ImageAug3D` to
+  `256x704`, train resize `[0.38, 0.55]`, test resize `0.48`, train rotation
+  `[-5.4, 5.4]`, optional horizontal flip, and ImageNet normalization.
+- `LoadMultiViewImageFromFiles` gained an opt-in `backend="pillow"` path;
+  the legacy default remains the existing mmcv/NumPy path.
+- Fixed `640x352` sparse-depth caches are incompatible with the new geometric
+  image augmentation. The 30 m and 55 m configs therefore create `gt_depth`
+  by current-keyframe LiDAR projection after `ImageAug3D`; this remains a
+  training target only, not a model input. The historical checkpoint-compat
+  config was deliberately left unchanged.
+- Per user direction, no training/config validation was run after this edit;
+  only `git diff --check` was completed before commit.
