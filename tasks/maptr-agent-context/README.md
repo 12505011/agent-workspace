@@ -145,3 +145,15 @@ workflows.
   `work_dirs/cropped_camera_gt/58_val_000000_stretch/` in the remote MapTR
   workspace. The script logged its composed geometry contract:
   raw `lidar2img -> img_aug_matrix -> cropped pixels`.
+
+### 2026-08-20: Cropped-overlay source-FOV correction
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `703fecc` (pushed).
+- The cropped-camera GT visualizer now rejects a sampled map point that is
+  outside the original camera image before applying its image augmentation.
+  This prevents off-image geometry from being drawn after a resize/crop maps
+  its mathematical projection into the output canvas.
+- The change is limited to the offline inspection renderer; it does not alter
+  PKLs, camera calibration, image augmentation, or the model training path.
+- Python compilation and whitespace validation passed. A remote re-render is
+  still required after the user pulls commit `703fecc`.
