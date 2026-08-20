@@ -276,6 +276,16 @@ workflows.
   modelled as a separate layout before a three-front-camera training run can
   complete.
 
+### 2026-08-20: Dataset-level incomplete-camera filter
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `4b16abb` (pushed).
+- `CustomNuScenesOfflineLocalMapDataset` now derives required cameras from
+  its `FilterCameraViews` transform and filters `data_infos` at construction
+  time using the same image-parent-directory naming rule. The filter applies
+  uniformly to train, val, test, and raw-depth cache generation and logs its
+  retained count. This prevents DataLoader workers from receiving incompatible
+  mixed-layout records.
+
 ### 2026-08-20: 55 m nuscenes2 split and stop-line audit
 
 - The existing 55 m cache is
