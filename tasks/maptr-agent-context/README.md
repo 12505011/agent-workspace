@@ -99,3 +99,18 @@ workflows.
   config was deliberately left unchanged.
 - Per user direction, no training/config validation was run after this edit;
   only `git diff --check` was completed before commit.
+
+### 2026-08-20: Per-camera full-FOV switch
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `2923b0b` (pushed).
+- `ImageAug3D` accepts optional `camera_aug_overrides`. Its opt-in
+  `resize_mode="stretch"` resizes a named camera directly to the shared final
+  dimensions with independent x/y scales and records those scales in
+  `img_aug_matrix`; raw intrinsic and extrinsic calibration remains unchanged.
+- The 30 m and 55 m Westwell configs expose
+  `enable_front_top_mid_full_fov_stretch` (default `False`). Set it to `True`
+  for the `CAM_FRONT_TOP_MID` layout to preserve its full raw vertical FOV;
+  left/right cameras retain the BEVFusion augmentation path. Full-FOV mode
+  deliberately disables rotation and flip for that camera, since either would
+  discard image edges.
+- Python syntax checks and `git diff --check` passed; no training was run.
