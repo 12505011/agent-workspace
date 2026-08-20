@@ -232,6 +232,17 @@ workflows.
 - A regression unittest covers the multiview metadata contract. Per user
   convention, validation is performed on 4090_8 after pull.
 
+### 2026-08-20: Depth-frustum input-shape compatibility
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `7477b4b` (pushed).
+- `LSSTransform` now accepts both the current flat augmented image metadata
+  `(H, W, C)` and legacy per-camera shape lists when creating its frustum.
+  It no longer assumes the shape is always nested and therefore no longer
+  indexes the height integer as a sequence.
+- The active 55 m pipeline contract is input `256x704`, LSS feature stride
+  `16`, feature geometry `16x44`, and 118 depth bins for `[1,60)` at 0.5 m.
+  A unit test verifies that exact frustum shape.
+
 ### 2026-08-20: 55 m nuscenes2 split and stop-line audit
 
 - The existing 55 m cache is
