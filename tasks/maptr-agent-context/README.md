@@ -128,3 +128,20 @@ workflows.
   option without editing a config.
 - `conda run -n maptr ... --help`, Python compilation, and `git diff --check`
   passed. No real dataset render was run in this workspace.
+
+### 2026-08-20: nuscenes2 cropped-camera render verification
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `83e37f6` (pushed).
+- nuscenes2 PKLs use standard calibration record keys while preserving source
+  camera layout names in each image path. For Jinke/58 sample index 0:
+  `CAM_FRONT_TOP_MID <- CAM_FRONT_MID`,
+  `CAM_FRONT_MID_LEFT <- CAM_FRONT_LEFT`, and
+  `CAM_FRONT_MID_RIGHT <- CAM_FRONT_RIGHT`. The cropped-camera visualizer now
+  resolves this mapping from image-directory names, matching
+  `FilterCameraViews`.
+- On 4090_8, the 55 m validation PKL index 0 rendered successfully with
+  `--enable-front-top-mid-full-fov-stretch`. It produced three per-camera
+  images and one `256x704`-per-view strip beneath
+  `work_dirs/cropped_camera_gt/58_val_000000_stretch/` in the remote MapTR
+  workspace. The script logged its composed geometry contract:
+  raw `lidar2img -> img_aug_matrix -> cropped pixels`.
