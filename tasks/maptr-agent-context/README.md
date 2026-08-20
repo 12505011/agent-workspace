@@ -318,3 +318,25 @@ workflows.
   A local real-map check loaded `cnwxijk.json` successfully and extracted two
   stop-line `LineString` instances in a containing patch. Config loading
   confirmed `num_map_classes=7`.
+
+### 2026-08-20: Jinke/58 explicit camera-slot remap and stop-line PKL
+
+- Jinke/58 raw NuScenes channels are `CAM_FRONT_TOP_MID`,
+  `CAM_FRONT_MID_LEFT`, `CAM_FRONT_MID_RIGHT`, `CAM_REAR_TOP_LEFT`, and
+  `CAM_REAR_TOP_RIGHT`. Do **not** rely on filename-substring inference:
+  `CAM_FRONT_MID_LEFT` otherwise matches the shorter `CAM_FRONT_MID` alias,
+  causing several streams to overwrite one canonical slot.
+- The required explicit conversion mapping is:
+  `CAM_FRONT_TOP_MID -> CAM_FRONT_MID`,
+  `CAM_FRONT_MID_LEFT -> CAM_FRONT_LEFT`,
+  `CAM_FRONT_MID_RIGHT -> CAM_FRONT_RIGHT`,
+  `CAM_REAR_TOP_LEFT -> CAM_REAR_LEFT`, and
+  `CAM_REAR_TOP_RIGHT -> CAM_REAR_RIGHT`.
+- On 4090_8, the resulting non-overwriting cache is
+  `/storage/disks/d0/lelin/data/jinke/58/pkl_nuscenes2_x0_55_yneg10_10_stopline_3cam/`.
+  It has 4,212 train, 729 val, and 729 test frames; every frame contains the
+  three required front canonical keys. It contains 684/61/61 stop-line vectors
+  in train/val/test respectively, using the established 11-train/2-holdout
+  run-token split.
+- MapTR commit `46c8d3f` points the active 55 m config to that cache and uses
+  canonical model order `[CAM_FRONT_MID, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]`.
