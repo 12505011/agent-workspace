@@ -259,6 +259,23 @@ workflows.
   the same source images, camera selection/order, calibration, and depth
   range. It is intentionally not tied to one random augmentation draw.
 
+### 2026-08-20: Live-depth default and evaluation contract
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commits `558694c` and
+  `45be7c1` (pushed).
+- The active 55 m config exposes `use_depth_cache`, currently `False`; this
+  uses `LoadPointsFromFile -> ImageAug3D -> CustomPointToMultiViewDepth` for
+  per-batch, geometrically aligned live sparse-depth supervision. Set it true
+  only after creating the raw-camera cache.
+- Validation is explicitly aligned to the same Westwell camera names and
+  test pipeline as training/inference. It runs every two epochs.
+- Runtime cache generation exposed mixed-camera records in the current PKL:
+  at least one frame has only `CAM_FRONT_TOP_MID` and
+  `CAM_REAR_TOP_RIGHT`, while the model requires the three front cameras.
+  This is independent of depth-supervision mode and must be filtered or
+  modelled as a separate layout before a three-front-camera training run can
+  complete.
+
 ### 2026-08-20: 55 m nuscenes2 split and stop-line audit
 
 - The existing 55 m cache is
