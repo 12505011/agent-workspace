@@ -248,3 +248,19 @@ workflows.
   stop_line through polygon extraction, so adding the seventh class requires a
   converter fix followed by a fresh merged cache and run-token split. Reusing
   the current PKLs would train the new class with zero positives.
+
+### 2026-08-20: Westwell line-token stop-line conversion
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `8f93a42` (pushed).
+- `westwell_joint_converter.py` now removes Westwell `line_token` stop-line
+  records from the temporary NuScenes alias JSON before NuScenesMap builds its
+  polygon shortcuts, restores them after map initialization, and vectorizes
+  them as clipped line instances. This fixes the former
+  `KeyError: 'polygon_token'` and preserves the stop-line geometry.
+- The active 55 m config now has seven classes (adding `stop_line`) and points
+  to the separate `pkl_nuscenes2_x0_55_yneg10_10_stopline/` cache, so the old
+  six-class PKLs remain untouched.
+- Regression tests cover JSON sanitization and line-token-to-vector output.
+  A local real-map check loaded `cnwxijk.json` successfully and extracted two
+  stop-line `LineString` instances in a containing patch. Config loading
+  confirmed `num_map_classes=7`.
