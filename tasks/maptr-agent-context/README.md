@@ -114,3 +114,17 @@ workflows.
   deliberately disables rotation and flip for that camera, since either would
   discard image edges.
 - Python syntax checks and `git diff --check` passed; no training was run.
+
+### 2026-08-20: Cropped-camera GT projection visualizer
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `7e683a0` (pushed).
+- Added `tools/3dod_maptr/visualize_maptr_cropped_camera_gt.py`. It reads a
+  config plus infos PKL, applies that config's test-time `ImageAug3D` to the
+  three original camera images, and draws the PKL map GT after composing the
+  raw `lidar2img` projection with the resulting `img_aug_matrix`.
+- Output is one cropped `256x704` image per configured camera and one
+  three-camera strip. It supports
+  `--enable-front-top-mid-full-fov-stretch` to preview the center-camera
+  option without editing a config.
+- `conda run -n maptr ... --help`, Python compilation, and `git diff --check`
+  passed. No real dataset render was run in this workspace.
