@@ -231,3 +231,20 @@ workflows.
   expected `/16` LSS feature geometry `16x44`.
 - A regression unittest covers the multiview metadata contract. Per user
   convention, validation is performed on 4090_8 after pull.
+
+### 2026-08-20: 55 m nuscenes2 split and stop-line audit
+
+- The existing 55 m cache is
+  `pkl_nuscenes2_x0_55_yneg10_10_20260807_camera_remap/`, using
+  `x=[0,55] m`, `y=[-10,10] m`, 13 run-token roots, and up to 10 sweeps.
+  Eleven roots form train (4,212 frames); the two holdout roots
+  `67d96d9d7072406981aa694c667c338f` (405 frames) and
+  `8cc14b7ef6f742e183d7ee5aa4c551f3` (324 frames) are deliberately identical
+  for val and test (729 frames each).
+- Existing train/val/test annotations contain divider, boundary, centerline,
+  and some ped_crossing instances, but no bar markings or stop_line instances.
+  The raw `cnwxijk.json` map has two `stop_line` records per data copy; each
+  record is a `line_token`, not a polygon token. The current converter routes
+  stop_line through polygon extraction, so adding the seventh class requires a
+  converter fix followed by a fresh merged cache and run-token split. Reusing
+  the current PKLs would train the new class with zero positives.
