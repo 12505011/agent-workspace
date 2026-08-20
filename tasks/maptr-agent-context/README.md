@@ -177,3 +177,16 @@ workflows.
   retained by future camera-overlay tools: apply resize/crop/flip/rotation in
   dehomogenized pixel space, never by directly left-multiplying a 4x4 camera
   projection matrix with a pixel-space translation transform.
+
+### 2026-08-20: Long-range training crop selection
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `a1012d6` (pushed).
+- The 55 m Westwell entry config
+  `bevfusion_maptr_camera_only_nuscenes2_long_range.py` now enables
+  `enable_front_top_mid_full_fov_stretch=True` for training. The center camera
+  is stretched to the common `256x704` input without losing vertical FOV.
+- The two side cameras retain the BEVFusion-style isotropic resize/crop path,
+  including its padded right-side black region. BEV range, PKLs, decoder
+  contract, and all other training settings are unchanged.
+- Per user direction, this config was committed and pushed without local
+  training or validation; execution is performed on 4090_8.
