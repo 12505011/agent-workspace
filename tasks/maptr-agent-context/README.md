@@ -338,5 +338,6 @@ workflows.
   three required front canonical keys. It contains 684/61/61 stop-line vectors
   in train/val/test respectively, using the established 11-train/2-holdout
   run-token split.
-- MapTR commit `46c8d3f` points the active 55 m config to that cache and uses
-  canonical model order `[CAM_FRONT_MID, CAM_FRONT_LEFT, CAM_FRONT_RIGHT]`.
+- The cache was generated without changing source code. Selecting it for a
+  future experiment is a separate, explicit configuration decision; the
+  active 55 m config was intentionally left unchanged after generation.
