@@ -157,3 +157,19 @@ workflows.
   PKLs, camera calibration, image augmentation, or the model training path.
 - Python compilation and whitespace validation passed. A remote re-render is
   still required after the user pulls commit `703fecc`.
+
+### 2026-08-20: Perspective-correct cropped projection
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `c9938b7` (pushed).
+- Root cause: the visualization code treated `img_aug_matrix` as directly
+  composable with a 4x4 LiDAR-to-image projection. Its crop translation is a
+  pixel-space offset and must be applied after dividing projected coordinates
+  by depth. Direct composition incorrectly divides that translation by depth.
+- This explains the asymmetric symptom: the center full-FOV stretch has no
+  crop translation and appeared correct; the standard left/right views use
+  `v' = 0.48v - 112` and were displaced.
+- The renderer now projects to raw pixels, applies the 2D image affine to
+  dehomogenized pixels, and clips against the raw source FOV. A unittest was
+  added for the nonzero-depth pixel-translation case. Per user instruction,
+  this commit has not been run locally; validation is to be performed on
+  4090_8 after pull.
