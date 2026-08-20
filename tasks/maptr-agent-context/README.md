@@ -190,3 +190,14 @@ workflows.
   contract, and all other training settings are unchanged.
 - Per user direction, this config was committed and pushed without local
   training or validation; execution is performed on 4090_8.
+
+### 2026-08-20: Long-range 24-epoch schedule
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `c835356` (pushed).
+- The 55 m long-range config explicitly overrides the inherited 16-epoch
+  schedule with `total_epochs=24` and an `EpochBasedRunner` with
+  `max_epochs=24`.
+- Its `GridMask.max_epoch` is also set to 24 so the image augmentation
+  schedule spans the full training run. No optimizer, LR policy, data PKL,
+  model, or decoder setting changed. Per user direction, training is run on
+  4090_8 rather than locally.
