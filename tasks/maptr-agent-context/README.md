@@ -243,6 +243,22 @@ workflows.
   `16`, feature geometry `16x44`, and 118 depth bins for `[1,60)` at 0.5 m.
   A unit test verifies that exact frustum shape.
 
+### 2026-08-20: Raw-camera depth-supervision cache
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `1507c2e` (pushed).
+- Historical depth cache `gt_depth_nuscenes2_x0_55_3cam_640x352_uint16mm`
+  was for the former fixed 640x352 pipeline and must not be reused with the
+  current random 256x704 ImageAug3D pipeline.
+- The active 55 m config instead uses
+  `depth_cache_nuscenes2_front3_raw_v1/`. `precompute_gt_depth.py` stores
+  uint16-millimetre sparse maps in raw 3x768x960 camera coordinates before
+  ImageAug3D. Training loads that cache before ImageAug3D; the transform uses
+  the same sampled resize/crop/flip/rotation on the image and depth map.
+  Training therefore no longer reads PCD or projects LiDAR for depth targets.
+- The generated cache can be reused across train/val/test runs that retain
+  the same source images, camera selection/order, calibration, and depth
+  range. It is intentionally not tied to one random augmentation draw.
+
 ### 2026-08-20: 55 m nuscenes2 split and stop-line audit
 
 - The existing 55 m cache is
