@@ -171,5 +171,9 @@ workflows.
 - The renderer now projects to raw pixels, applies the 2D image affine to
   dehomogenized pixels, and clips against the raw source FOV. A unittest was
   added for the nonzero-depth pixel-translation case. Per user instruction,
-  this commit has not been run locally; validation is to be performed on
-  4090_8 after pull.
+  no local validation was run.
+- 2026-08-20: User validated commit `c9938b7` on 4090_8 and confirmed the
+  repaired cropped-camera projection is correct. This projection rule must be
+  retained by future camera-overlay tools: apply resize/crop/flip/rotation in
+  dehomogenized pixel space, never by directly left-multiplying a 4x4 camera
+  projection matrix with a pixel-space translation transform.
