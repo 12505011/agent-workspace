@@ -341,3 +341,15 @@ workflows.
 - The cache was generated without changing source code. Selecting it for a
   future experiment is a separate, explicit configuration decision; the
   active 55 m config was intentionally left unchanged after generation.
+
+### 2026-08-21: Raw-camera inference projection fix
+
+- Source branch: `bev_3dod_maptr_decoder_opt`, commit `6b55a5b` (pushed).
+- `maptr_visualize.py` previously applied `inverse(img_aug_matrix)` to the
+  PKL `lidar2img` matrix for a raw-camera canvas. This is invalid: the PKL
+  matrix is already calibrated for raw pixels, while `img_aug_matrix` maps raw
+  pixels to the network resize/crop canvas only.
+- Raw overlays now use `lidar2img` unchanged. Network-crop overlays retain the
+  correct rule: perspective-project with raw calibration, then apply the
+  image augmentation in dehomogenized pixel coordinates. A regression test
+  verifies that a resize/crop matrix cannot alter the raw projection.
