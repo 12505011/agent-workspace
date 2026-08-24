@@ -353,3 +353,25 @@ workflows.
   correct rule: perspective-project with raw calibration, then apply the
   image augmentation in dehomogenized pixel coordinates. A regression test
   verifies that a resize/crop matrix cannot alter the raw projection.
+
+### 2026-08-24: Local MapTR Docker baseline reproduced from 4090_8
+
+- Local verified image: `maptr:4090-cuda113`, image ID
+  `sha256:5b18a7fd201cb8a8dd48f6d351b3c7859ef5dc300627e8ea514b98224d55c4c6`.
+  It is built from the same 4090_8 base image
+  `harbor.wellspiking.ai/model_evalution/bevfusion:dev_jqy_spiking`
+  (Ubuntu 20.04, CUDA 11.3.1) and a packed copy of its `maptr` Conda runtime.
+- Verified inside the local container with the current MapTR repository bind
+  mounted: Python 3.8.20, PyTorch 1.10.1 with CUDA 11.3, MMCV 1.4.0, MMDet
+  2.20.0, OpenCV 4.5.5, and `mmdet3d` import. CUDA was available on the local
+  RTX 3060; the same image contract applies to the target 4090 hosts.
+- Persistent build documentation is kept at `/home/westwell/maptr_docker_4090/`
+  (`Dockerfile`, `README.md`, `.dockerignore`). Code and datasets are runtime
+  bind mounts under `/workspace/maptr`, `/workspace/data`, and
+  `/workspace/work_dirs`; host paths are therefore intentionally not baked
+  into the image.
+- Intermediate Conda archives, base-image archives, wheel downloads, build
+  logs, and 4090 staging paths were moved to trash after validation. The local
+  Docker image itself is the retained runnable artifact. If a portable archive
+  is needed later, export this verified image with
+  `docker image save maptr:4090-cuda113 | zstd -T0 -3 > maptr.tar.zst`.
