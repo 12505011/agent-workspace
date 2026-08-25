@@ -375,3 +375,23 @@ workflows.
   Docker image itself is the retained runnable artifact. If a portable archive
   is needed later, export this verified image with
   `docker image save maptr:4090-cuda113 | zstd -T0 -3 > maptr.tar.zst`.
+
+### 2026-08-25: Shared-BEV LiDAR voxel-coordinate normalization
+
+- Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commit `1a6a35d`
+  (pushed). The two-stage schedule remains 24 epochs for each stage; Stage 2
+  still freezes the Stage-1 LiDAR encoder.
+- Stage 1 previously failed in the first stride sparse convolution with
+  `N > 0 assert failed ... got N=0`. A controlled 4090_8 probe requested
+  distinct `(x,y,z)` voxel bins and verified that the installed voxelizer
+  binary returns coordinates in `(z,y,x)` order. The branch's SparseEncoder,
+  sparse shape `[1440,1440,41]`, final z-axis convolution, and dense-to-BEV
+  conversion instead consistently use `(x,y,z)`.
+- The shared-BEV LiDAR config now declares the two coordinate conventions
+  explicitly. `BEVFusion.voxelize()` converts `zyx -> xyz` before adding the
+  batch index. On the original failing sample, 36,658 input voxels then
+  passed through the sparse backbone and produced the expected LiDAR BEV
+  shape `(1,256,180,180)`.
+- This is a runtime model/config correction only. It does not change the
+  point-cloud range, voxel size, dataset split, PKL files, or training heads;
+  PKLs do not need regeneration.
