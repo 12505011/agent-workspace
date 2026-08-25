@@ -395,3 +395,19 @@ workflows.
 - This is a runtime model/config correction only. It does not change the
   point-cloud range, voxel size, dataset split, PKL files, or training heads;
   PKLs do not need regeneration.
+
+### 2026-08-25: Stage-1 shared-BEV DDP graph cleanup
+
+- Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commit `f537b60`
+  (pushed).
+- After voxel-coordinate normalization allowed Stage 1 to advance, DDP
+  reported the same ten unused trainable parameters on every rank. They are
+  exclusively from the original image-to-BEV MapTR path: learned BEV
+  positional encoding, camera/feature-level embeddings, and the CAN-bus MLP.
+  The Stage-1 `shared_bev` route decodes the LiDAR BEV directly and therefore
+  cannot use these parameters.
+- Stage 1 now freezes exactly those ten parameters. The LiDAR encoder, shared
+  BEV decoder, object head, MapTR vector decoder, classification/regression
+  branches, and BEV segmentation head remain trainable. DDP unused-parameter
+  detection remains disabled so future accidental graph omissions still fail
+  visibly instead of being masked.
