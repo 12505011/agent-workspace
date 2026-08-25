@@ -411,3 +411,5 @@ workflows.
   branches, and BEV segmentation head remain trainable. DDP unused-parameter
   detection remains disabled so future accidental graph omissions still fail
   visibly instead of being masked.
+- Commit `0196256` adds `RUN_STAGE2=0` to the restartable training script, so
+  Stage 1 can train/recover for 24 epochs and stop before Stage 2.
