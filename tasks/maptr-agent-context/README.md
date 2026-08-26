@@ -71,6 +71,56 @@ workflows.
   nor MMDet installed. Do not claim the CUDA 11.8 hypothesis proven until the
   exact 8-GPU Stage-1 smoke reaches and survives sparse voxelization.
 
+### 2026-08-26: seed hypothesis ruled out on old CUDA 11.3 environment
+
+- Goal: test whether the 8-GPU `N=0` is caused by multi-rank random-state
+  divergence. BEVFusion's stable 8-GPU `lidar_0813` run (see below) trains with
+  `seed = 0`; the MapTR stage-1 configs never define `seed`, so
+  `maptr_train_torchrun.py` falls back to `cfg.setdefault("seed", None)` and
+  skips seeding entirely.
+- Reproduction baseline: on 4090_8, remote checked out to detached HEAD
+  `edb8024` (pre-torch2 code). Old env `maptr` (torch 1.10.1 + cudatoolkit
+  11.3 runtime-only, no `bin/nvcc`) recompiled all extensions with system
+  `/usr/local/cuda-11.8` nvcc and the setup.py gencode fallback
+  `70/75/80/86` (no sm_89) — byte-identical to the original failing build.
+  Baseline 8-GPU smoke re-reproduced `N=0` in the first iteration on
+  `SparseEncoder.encoder_layer -> spconv get_indice_pairs()`.
+- A/B result: `--cfg-options seed=0` entered the config (`'seed': 0`,
+  `Set random seed to 0`) yet rank 3 still failed with the identical
+  `N > 0 assert failed, N=0`. **Seed / multi-rank random state is therefore
+  ruled out as the root cause.**
+- The old-env experiment is faithful: the old env never had its own nvcc
+  (conda `cudatoolkit-11.3.1` is runtime-only, 88 files, no `bin/nvcc`), so
+  the original `.so` were always compiled with the system CUDA 11.8 nvcc but
+  hard-coded to gencode `70/75/80/86` (no sm_89). Runtime CUDA 11.3 + compile
+  CUDA 11.8 + sm_86-only cubins running on sm_89 remains the sole unruled-out
+  hypothesis.
+
+### 2026-08-26: BEVFusion trunk 8-GPU training is genuinely stable
+
+- `/root/yihan/bevfusion` is the CUDA 11.3 BEVFusion deployment/training repo
+  (`docker/Dockerfile`: `nvidia/cuda:11.3.1-devel`, `torch==1.10.1`,
+  `mmcv-full==1.4.0`, `mmdet==2.20.0`). Its `setup.py` hard-codes the same
+  gencode `70/75/80/86` (no sm_89), and it already has compiled `.so`.
+- Its operator sources are byte-identical to the MapTR repo for the
+  pre-task-head LiDAR path: all 7 spconv sources (`all/indice/reordering/
+  maxpool` `.cc`+`.cu`) and all 6 voxel sources (`voxelization`/`scatter_points`
+  `.cpp`/`.cu`/`.h`) `diff` empty. The only MapTR deltas in `sparse_encoder.py`
+  and `bevfusion.py` are env-gated debug probes; the computation path is
+  unchanged. This confirms the failure is not caused by adding the MapTR head.
+- Its stable 8-GPU runs live under `/storage/disks/d0/run_dir/lidar_0813/`
+  (`20260813_072737.log`, `20260813_162126.log`): two complete 20-epoch runs,
+  `epoch_20.pth` saved, validation evaluated, and zero `N=0` / spconv /
+  `get_indice_pairs` / CUDA errors in the full logs. `seed = 0`,
+  `deterministic = False`, `cudnn_benchmark = False`.
+- Notable config difference vs MapTR stage-1: BEVFusion `voxel_size`
+  `[0.125,0.125,0.2]` or `[0.1,0.1,0.2]`, `point_cloud_range`
+  `[-80,-80,-1,80,80,7]`; MapTR uses `[0.075,0.075,0.2]` and
+  `[-54,-54,-5,54,54,3]`. Both use `sparse_shape [1440,1440,41]`. BEVFusion
+  launches via `tools/dist_train.sh` (`torch.distributed.launch` + mmcv
+  `init_dist`) or torchpack/MPI; MapTR uses `torchrun` +
+  `init_process_group` (see `maptr_train_torchrun.py`).
+
 ### 2026-08-26: voxelize c_x/c_z swap root-cause isolation
 
 - Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commits up to `0830826`.
