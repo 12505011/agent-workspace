@@ -444,3 +444,14 @@ workflows.
   multi-GPU execution. Next investigation must log per-rank voxel count and
   coordinate range at every sparse-encoder stage, then compare against the
   completed one-GPU run; do not change sparse shapes or add dummy voxels first.
+
+### 2026-08-26: Bounded per-rank sparse diagnostics added
+
+- Source branch commit `27ff941` (pushed) adds
+  `debug_sparse_max_calls` to `SparseEncoder`; it defaults to `0` and has no
+  computation-path effect. For the configured number of calls, each rank logs
+  active voxel count, sparse shape, and coordinate min/max at input, after
+  `conv_input`, before/after each encoder stage, and around `conv_out`.
+- The shared-BEV base config exposes the option at
+  `model.encoders.lidar.backbone.debug_sparse_max_calls`. Set it to a small
+  value (for example `2`) via `--cfg-options` for a short multi-GPU repro.
