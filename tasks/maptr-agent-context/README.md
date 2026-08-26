@@ -53,14 +53,20 @@ workflows.
   - kernel race — `compute-sanitizer --tool racecheck` → 0 hazards;
   - async race — `CUDA_LAUNCH_BLOCKING=1` still swaps;
   - NCCL init and DDP broadcast — probes with `init_process_group` and a
-    DDP-wrapped forward all stable.
-- Conclusion: CUDA-execution-layer non-determinism specific to the full
-  multi-GPU training forward (decorator chain
-  `@auto_fp16`/`@force_fp32`/`@torch.no_grad` or DataLoader-collate memory
-  state interacting with the voxelize kernel), not a code-logic bug. Root
-  cause not yet pinned. Next candidates: a `.contiguous()`/`.clone()`
-  force-reallocation workaround at the `voxelize` entry (untested), or
-  GPU-level profiling (Nsight Compute) / driver change.
+    DDP-wrapped forward all stable;
+  - memory source — a `res.clone()` at the voxelize entry (env-gated
+    `MAPTR_VOXELIZE_CLONE`) still swaps;
+  - decorator chain — `fp16=None` so `@auto_fp16`/`@force_fp32` pass through
+    (and float rounding cannot swap integer coors columns).
+- Working hypothesis (not proven): a CUDA-driver/hardware-level
+  non-determinism specific to this multi-GPU training stack (PyTorch 1.10.1 +
+  CUDA 11.3 + custom spconv), rather than a code-logic bug. Every code-layer
+  variable above is exhausted, and the whole-column `c_x`/`c_z` swap looks like
+  a memory/execution-level effect rather than an algorithmic one. The
+  `.clone()` workaround was tested and did not help. Next most likely fixes,
+  in order: (1) move to a newer PyTorch/CUDA combo and rebuild the extensions,
+  (2) Nsight Compute to diff the kernel across ranks, (3) fall back to
+  single-GPU training.
 - Diagnostic tools committed (all env-gated, default off):
   `sparse_encoder.py` per-stage probe, `DebugPointsRange`, voxelize in/out
   probe + swap dump, and
