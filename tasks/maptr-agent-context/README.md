@@ -30,6 +30,29 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-26: no-sweeps 8-GPU control still reproduces sparse `N=0`
+
+- The Stage-1 control config was changed at runtime to set
+  `LoadPointsFromMultiSweeps.sweeps_num=0` in both train and test pipelines.
+  The transform remains visible in a dumped config by design, but with zero
+  selections it retains only the keyframe and reads no historical sweep.
+- The subsequent 8-GPU smoke still reproduced spconv's `N > 0` / `N=0`
+  failure. This rules out historical-sweep concatenation and sweep extrinsic
+  transforms as the trigger. This control uses official nuScenes keyframe
+  point clouds (the `westwell_nusc` filename is a project naming convention,
+  not a Westwell point-cloud source), so a Westwell point-cloud binary/layout
+  mismatch is ruled out for this reproduction. The previously observed
+  whole-column `c_x`/`c_z` swap occurs after hard voxelization and is not
+  explained by a normal malformed input sample.
+- The failure remains before either object or MapTR loss/head execution. The
+  next isolation should hold the runtime fixed and align the remaining
+  BEVFusion input-contract deltas one at a time. Commit `9d7e3ca` made the
+  first alignment: Stage-1 now loads four features (`x,y,z,intensity`), keeps
+  its no-sweep setting, and explicitly overrides the inherited
+  `SparseEncoder.in_channels` from 5 to 4. The range, voxel grid,
+  augmentations, and task heads are deliberately unchanged. Run the 8-GPU
+  smoke with this commit before changing z range/point range.
+
 ### 2026-08-26: CUDA 11.8 runtime dependency validation and MMCV blocker
 
 - On 4090_8, `maptr_new` now has PyTorch 2.0.1 + CUDA 11.8 and rebuilt
