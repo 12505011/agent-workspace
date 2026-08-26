@@ -44,9 +44,13 @@ workflows.
   hard-voxelizer output and pads its batch column, with no coordinate rewrite.
 - The shared config removes the added coordinate-order/debug options and uses
   the normal hard-voxelizer default (`deterministic=True`). Python compilation
-  and whitespace checks passed locally. An 8-GPU one-epoch smoke remains the
-  required validation; do not treat earlier axis-normalization experiments as
-  proof of the coordinate contract.
+  and whitespace checks passed locally. The 8-GPU smoke at commit `e87829d`
+  still failed on rank 5 during the first training iteration, inside an
+  `encoder_layer` call to spconv `get_indice_pairs()` with `N=0`. There was no
+  OOM, illegal-memory-access, or primary NCCL error. Raw sweep xyz diagnostics
+  occur before `PointsRangeFilter` and therefore do not show that the filtered
+  sparse input is invalid. A per-stage active-count probe on the exact failing
+  batch is required before another implementation change.
 
 - 2026-08-13: Repository initialized to make agent context portable across
   Codex and Claude Code. Initial content is intentionally generic.
