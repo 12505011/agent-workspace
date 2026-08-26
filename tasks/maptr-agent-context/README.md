@@ -427,3 +427,20 @@ workflows.
   This validates the coordinate-order and Stage-1 graph fixes for one GPU;
   multi-GPU stability still requires a separate smoke test before a 24-epoch
   eight-GPU run.
+
+### 2026-08-26: Eight-GPU direct smoke remains blocked before DDP reduction
+
+- Direct 8-GPU Stage-1 smoke at commit `0196256` also failed after forcing
+  NCCL to use socket transport (`NCCL_P2P_DISABLE=1`, `NCCL_SHM_DISABLE=1`,
+  `NCCL_IB_DISABLE=1`). All eight ranks logged `NCCL ... Init COMPLETE` and
+  entered parameter broadcast successfully.
+- The first application failure is independent of NCCL: the sparse backbone
+  fails in `spconv/ops.py:get_indice_pairs()` from
+  `SparseEncoder.forward()` with `N > 0 assert failed ... got N=0`. Subsequent
+  socket-connection and NCCL errors occur only after ranks terminate and are
+  therefore secondary effects.
+- This rules out NCCL transport as the immediate cause but does not yet prove
+  why an intermediate sparse tensor becomes empty only under concurrent
+  multi-GPU execution. Next investigation must log per-rank voxel count and
+  coordinate range at every sparse-encoder stage, then compare against the
+  completed one-GPU run; do not change sparse shapes or add dummy voxels first.
