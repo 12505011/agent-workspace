@@ -84,10 +84,13 @@ workflows.
   explained by a normal malformed input sample.
 - The failure remains before either object or MapTR loss/head execution. The
   next isolation should hold the runtime fixed and align the remaining
-  BEVFusion input-contract deltas one at a time. Commit `9d7e3ca` made the
-  first alignment: Stage-1 now loads four features (`x,y,z,intensity`), keeps
-  its no-sweep setting, and explicitly overrides the inherited
-  `SparseEncoder.in_channels` from 5 to 4. The range, voxel grid,
+  BEVFusion input-contract deltas one at a time. Commits `9d7e3ca` and
+  `ccea0e4` made the first alignment safely: Stage-1 retains the official
+  nuScenes raw record width (`load_dim=5`) but selects four features
+  (`use_dim=4`, `x,y,z,intensity`), keeps its no-sweep setting, and explicitly
+  overrides the inherited `SparseEncoder.in_channels` from 5 to 4. Using
+  `load_dim=4` on native nuScenes `.bin` would mis-reshape its 5-float records
+  and is invalid. The range, voxel grid,
   augmentations, and task heads are deliberately unchanged. Run the 8-GPU
   smoke with this commit before changing z range/point range.
 
