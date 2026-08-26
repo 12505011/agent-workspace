@@ -56,6 +56,12 @@ workflows.
   command-line override reintroduced the removed
   `model.encoders.lidar.backbone.debug_sparse_max_calls=2` option, so all ranks
   stopped during model construction with an unexpected-keyword `TypeError`.
+- A corrected rerun later overwrote `debug8/train.log` and did exercise the
+  rebuilt extension. It reproduced the same first-iteration failure in
+  `SparseEncoder.encoder_layer -> spconv get_indice_pairs()`; rank 1 was the
+  first observed failure and rank 3 also emitted `N=0`. Recompiling
+  `sparse_conv_ext.so` therefore did not change the symptom and rules out a
+  stale binary as the immediate cause.
 
 - 2026-08-13: Repository initialized to make agent context portable across
   Codex and Claude Code. Initial content is intentionally generic.
