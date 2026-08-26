@@ -30,6 +30,24 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-26: PyTorch 2 / CUDA 11.8 custom-op source compatibility
+
+- A clean 4090_8 `maptr_new` Conda environment now reports Python 3.8,
+  PyTorch 2.0.1, PyTorch CUDA 11.8, CUDA Toolkit 11.8 (`nvcc 11.8.89`), and
+  RTX 4090 capability `(8, 9)`. The former environment was a CUDA 11.3 clone
+  and did not test this hypothesis.
+- Full custom-op rebuild first stopped at `ball_query.cpp` because PyTorch 2
+  removed `<THC/THC.h>` and `THCState`. Source commit `74ff687` (pushed on
+  `bev_3dod_maptr_shared_bev_mmdet3d`) ports the six affected PointNet wrapper
+  files to `ATen/cuda/CUDAContext.h`, removes unused THC state, modernizes the
+  BallQuery CUDA check, and replaces one deprecated `Tensor.data<T>()` call.
+  It intentionally does not change any CUDA kernel or Python API.
+- Added `tests/test_torch2_cuda_extension_compat.py`; the test was observed
+  failing before the port and passing after it. `git diff --check` passed.
+  Server-side rebuild and training validation are still pending. Do not claim
+  the CUDA 11.8 hypothesis proven until the exact 8-GPU Stage-1 smoke reaches
+  and survives sparse voxelization.
+
 ### 2026-08-26: voxelize c_x/c_z swap root-cause isolation
 
 - Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commits up to `0830826`.
