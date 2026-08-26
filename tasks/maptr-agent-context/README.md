@@ -32,27 +32,21 @@ workflows.
 
 ### 2026-08-26: Shared-BEV stage-1 sparse-coordinate diagnosis
 
-- Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commit `38e7eaa`
-  (pushed). The eight-GPU stage-1 failure occurs in the LiDAR
-  `SparseEncoder`, before any camera encoder forward.
-- A one-epoch eight-GPU smoke test reproduced
-  `spconv ... CUDA kernel launch blocks must be positive, but got N=0` both
-  with hard voxelization `deterministic=False` and with `True`; the latter is
-  therefore not the root cause.
-- The `f33719b` static `xyz -> zyx` attempt was invalidated by its smoke
-  result: different ranks exposed both raw `xyz` and raw `zyx` layouts, and
-  one rank reached a 11,392-channel dense tensor instead of the decoder's
-  required 256 channels. This fork's sparse-to-dense path uses `[x,y,z]`
-  (`sparse_shape=[1440,1440,41]`), despite a copied upstream docstring that
-  stated zyx.
-- Commit `38e7eaa` restores the fork's xyz sparse shape and normalizes each
-  voxelized sample to xyz by validating its coordinates against the configured
-  xyz and zyx grid limits. It emits the resolved source order in
-  `MapTRVoxelDebug`; an eight-GPU smoke test after this commit is required.
-- The active stage-1 config explicitly sets `model.encoders.camera=None`.
-  Its inherited six-camera list is unused in stage 1, so it cannot explain
-  this LiDAR-only failure. The later camera/fuser stage should use the
-  deployment-aligned three front views, independently of this fix.
+- Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commit `e87829d`
+  (pushed). A direct comparison against the known-good Westwell BEVFusion
+  source showed that prior MapTR-only coordinate-order auto-detection,
+  coordinate swapping, zero-voxel insertion, and sparse debug instrumentation
+  had diverged from the established LiDAR path.
+- `mmdet3d/models/backbones/sparse_encoder.py` now has the same computation
+  as BEVFusion: coordinates are passed in the upstream `(batch,z,y,x)`
+  contract, sparse shape is `[1440,1440,41]`, and dense conversion produces
+  `(B,C*D,H,W)`. `BEVFusion.voxelize()` likewise again directly consumes the
+  hard-voxelizer output and pads its batch column, with no coordinate rewrite.
+- The shared config removes the added coordinate-order/debug options and uses
+  the normal hard-voxelizer default (`deterministic=True`). Python compilation
+  and whitespace checks passed locally. An 8-GPU one-epoch smoke remains the
+  required validation; do not treat earlier axis-normalization experiments as
+  proof of the coordinate contract.
 
 - 2026-08-13: Repository initialized to make agent context portable across
   Codex and Claude Code. Initial content is intentionally generic.
