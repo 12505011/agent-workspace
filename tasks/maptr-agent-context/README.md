@@ -67,6 +67,27 @@ workflows.
   0724/0815`) used the same source but the `/temp_data` mount referenced by
   those older PKLs is gone; the current `pkl_shared_bev_od_x0_54` PKL uses
   absolute `/storage/disks/d0/QP_NuScene/labeled/mxvlkica128/...` paths.
+- Neither paired config applies beam/global point downsampling: both set
+  `reduce_beams=32`, while the loader only reduces when that value is `<32`.
+  Both do apply the same post-augmentation range filter and the hard
+  voxelizer's shared 10-points-per-voxel / max-voxel caps. Differences in
+  surviving point count and occupied-voxel distribution therefore remain a
+  data-dependent trigger candidate.
+
+### 2026-08-26: point-count controlled follow-up is implemented
+
+- MapTR commit `384f6a3` adds
+  `tools/3dod_maptr/collect_lidar_voxel_stats.py`. It builds the configured
+  training dataset/pipeline, then reports per-frame post-filter `n_points`,
+  xyz range, hard-voxel count, per-voxel occupancy, and max-voxel saturation
+  to a JSON file. This establishes the mxg128 median point-count cap without
+  modifying either dataset.
+- The same commit adds
+  `bevfusion_maptr_shared_bev_od_only_lidar_nuscenes_pointcap.py`. It requires
+  an explicit `MAPTR_POINT_CAP` and inserts only `PointSample` immediately
+  after `PointsRangeFilter` in the official-nuScenes pure-OD training path.
+  All geometry, model, batch, augmentation, and voxel parameters inherit from
+  the paired parity config.
 
 ### 2026-08-26: no-sweeps 8-GPU control still reproduces sparse `N=0`
 
