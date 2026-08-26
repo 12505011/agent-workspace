@@ -413,3 +413,17 @@ workflows.
   visibly instead of being masked.
 - Commit `0196256` adds `RUN_STAGE2=0` to the restartable training script, so
   Stage 1 can train/recover for 24 epochs and stop before Stage 2.
+
+### 2026-08-25: Stage-1 one-GPU full-epoch validation
+
+- On 4090_8, commit `0196256` completed one full Stage-1 epoch on GPU 0:
+  28,130 / 28,130 iterations, with `RUN_STAGE2=0`. The run used
+  `work_dirs/shared_bev/nuscenes_two_stage/stage1_smoke_1gpu_1e_20260825`.
+- Verified artifact: `epoch_1.pth` exists and is 157,447,339 bytes. The
+  launcher logged both successful checkpoint save and the expected
+  `Stage 1 completed; RUN_STAGE2=0, stopping before Stage 2` exit.
+- Peak reported memory was 17,257 MiB. No `spconv N=0`, illegal CUDA memory
+  access, or DDP unused-parameter failure appeared during the complete epoch.
+  This validates the coordinate-order and Stage-1 graph fixes for one GPU;
+  multi-GPU stability still requires a separate smoke test before a 24-epoch
+  eight-GPU run.
