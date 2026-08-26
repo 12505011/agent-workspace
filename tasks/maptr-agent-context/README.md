@@ -30,6 +30,42 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-26: voxelize c_x/c_z swap root-cause isolation
+
+- Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commits up to `0830826`.
+  The 8-GPU stage-1 smoke still fails in the first iteration with `N=0` in
+  spconv `get_indice_pairs()`, while a one-GPU full epoch passes.
+- Per-stage sparse probes (`debug_sparse_max_calls`), pipeline probes
+  (`DebugPointsRange`), and voxelize in/out probes (`MAPTR_DEBUG_POINTS`) were
+  added (all env-gated, default off). They localize the failure to
+  `hard_voxelize`: its output coors have `c_x` (col 0) and `c_z` (col 2)
+  randomly swapped on some ranks, so the z dimension (extent 41) receives
+  x-values up to ~1437 and the first stride sparse conv empties out. `c_y` is
+  never affected.
+- Exhaustively ruled out, each with a deterministic experiment:
+  - data — single-GPU replay of 5 dumped swapped samples: 20/20 stable at
+    `c_z_max=39`;
+  - build cache — clean `rm -rf build/` rebuild (`.so` 12:25);
+  - GPU hardware/concurrency — 8-GPU serial AND concurrent probes stable;
+  - augmentation — GlobalRotScaleTrans/RandomFlip3D disabled, still swaps;
+  - input format — type/dtype/device/contiguous identical to the stable probe;
+  - num_features — `[N,3]` and `[N,5]` both stable;
+  - kernel race — `compute-sanitizer --tool racecheck` → 0 hazards;
+  - async race — `CUDA_LAUNCH_BLOCKING=1` still swaps;
+  - NCCL init and DDP broadcast — probes with `init_process_group` and a
+    DDP-wrapped forward all stable.
+- Conclusion: CUDA-execution-layer non-determinism specific to the full
+  multi-GPU training forward (decorator chain
+  `@auto_fp16`/`@force_fp32`/`@torch.no_grad` or DataLoader-collate memory
+  state interacting with the voxelize kernel), not a code-logic bug. Root
+  cause not yet pinned. Next candidates: a `.contiguous()`/`.clone()`
+  force-reallocation workaround at the `voxelize` entry (untested), or
+  GPU-level profiling (Nsight Compute) / driver change.
+- Diagnostic tools committed (all env-gated, default off):
+  `sparse_encoder.py` per-stage probe, `DebugPointsRange`, voxelize in/out
+  probe + swap dump, and
+  `tools/3dod_maptr/check_voxel_{order,order_real,nccl,replay}.py`.
+
 ### 2026-08-26: Shared-BEV stage-1 sparse-coordinate diagnosis
 
 - Source branch: `bev_3dod_maptr_shared_bev_mmdet3d`, commit `e87829d`
