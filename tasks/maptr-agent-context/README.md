@@ -50,6 +50,31 @@ workflows.
   runtime hypothesis. Resolve the MMCV/custom-spconv registry compatibility
   first, with a focused regression test on the real training import path.
 
+### 2026-08-26: Reference BEVFusion comparison
+
+- `/root/yihan/bevfusion` is trained through the running `bevfusion` Docker
+  container, with `/root/yihan/bevfusion -> /bevfusion`. The documented 8-GPU
+  entry point is `tools/dist_train.sh <config.yaml> 8`, which uses
+  `torch.distributed.launch` and `tools/westwell_train.py` with NCCL.
+- Inside that container the runtime is also Python 3.8, PyTorch 1.10.1+cu113,
+  MMCV 1.4.0, MMDetection 2.20.0, and RTX 4090 capability `(8,9)`.
+  `mmdet3d/ops/voxel/src/voxelization_cuda.cu` and
+  `mmdet3d/ops/spconv/{conv.py,ops.py}` have byte-identical source hashes to
+  the MapTR branch. This rules out the *base* CUDA 11.3/PyTorch 1.10 stack and
+  divergent voxel/spconv source as sufficient explanations for the MapTR-only
+  8-GPU failure; historical compiled binary differences remain untested.
+- The training inputs are materially different: the BEVFusion Westwell
+  LiDAR-only config uses one current sweep, four point features, z range
+  `[-1,7]`, and default batch 8 per GPU. MapTR Stage 1 uses current + four
+  historical sweeps, five features, z range `[-5,3]`, and batch 1 per GPU.
+  Both use xy range `[-54,54]`, 0.075/0.075/0.2 voxel size, sparse shape
+  `[1440,1440,41]`, and `max_voxels=[120000,160000]`.
+- Next discriminating experiment: keep the MapTR code/runtime fixed and make
+  a one-epoch 8-GPU Stage-1 smoke use BEVFusion's LiDAR input contract one
+  difference at a time (first remove multi-sweeps, then use four features,
+  then align z range). This will determine whether a data-pipeline property
+  triggers the coordinate corruption.
+
 ### 2026-08-26: PyTorch 2 / CUDA 11.8 custom-op source compatibility
 
 - A clean 4090_8 `maptr_new` Conda environment now reports Python 3.8,
