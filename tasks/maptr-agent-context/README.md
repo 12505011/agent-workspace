@@ -455,3 +455,31 @@ workflows.
 - The shared-BEV base config exposes the option at
   `model.encoders.lidar.backbone.debug_sparse_max_calls`. Set it to a small
   value (for example `2`) via `--cfg-options` for a short multi-GPU repro.
+
+### 2026-08-26: Corrected shared-BEV voxelizer coordinate contract
+
+- A direct controlled probe of the installed 4090 voxelizer on both GPU 0 and
+  GPU 1 returned coordinates in `(x,y,z)` order. This supersedes the earlier
+  `zyx` assumption.
+- The prior shared-BEV config performed an incorrect `zyx -> xyz` swap on
+  already-`xyz` coordinates. During two-GPU diagnostics, the failing rank
+  consequently carried values up to 1429 in the third sparse dimension whose
+  configured extent is only 41, then hit `spconv N=0`.
+- Source commit `a160171` (pushed) changes the shared-BEV contract to
+  `voxel_coordinate_order='xyz'` and
+  `sparse_coordinate_order='xyz'`, eliminating the swap. The earlier single
+  GPU Stage-1 smoke only showed non-crashing execution; it must not be used as
+  a geometrically valid checkpoint because it used the incorrect contract.
+
+### 2026-08-26: Temporal-sweep source diagnostics
+
+- Training-mode `LoadPointsFromMultiSweeps` uses `np.random.choice()` whenever
+  more historical sweeps are available than requested. A one-GPU full epoch
+  and a DDP epoch can therefore use different sweep combinations for the same
+  keyframe; this explains why the one-GPU run cannot fully clear PKL sweep
+  metadata.
+- Source commit `175e7cd` (pushed) adds the opt-in environment switch
+  `MAPTR_DEBUG_SWEEPS=1`. It logs rank, keyframe path, selected sweep index and
+  path, plus the transformed xyz range. Use it only for a short failing repro
+  to determine whether an invalid raw file or a bad sweep transform is the
+  source of the out-of-range z values.
