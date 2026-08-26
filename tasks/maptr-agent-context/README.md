@@ -51,6 +51,11 @@ workflows.
   occur before `PointsRangeFilter` and therefore do not show that the filtered
   sparse input is invalid. A per-stage active-count probe on the exact failing
   batch is required before another implementation change.
+- The rebuilt extension was present on 4090_8 at `2026-08-26 11:15:16`
+  (16,601,840 bytes). The subsequent `debug8` run did not exercise it: its
+  command-line override reintroduced the removed
+  `model.encoders.lidar.backbone.debug_sparse_max_calls=2` option, so all ranks
+  stopped during model construction with an unexpected-keyword `TypeError`.
 
 - 2026-08-13: Repository initialized to make agent context portable across
   Codex and Claude Code. Initial content is intentionally generic.
