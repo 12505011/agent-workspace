@@ -30,6 +30,26 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-26: CUDA 11.8 runtime dependency validation and MMCV blocker
+
+- On 4090_8, `maptr_new` now has PyTorch 2.0.1 + CUDA 11.8 and rebuilt
+  custom extensions, plus `mmcv-full 1.7.2`, `mmdet 2.28.2`, and the required
+  offline runtime packages (including OpenCV, SciPy, Matplotlib, PyYAML,
+  pycocotools, YAPF, and their direct dependencies). From the MapTR source
+  directory, `import torch, mmcv, mmdet, mmdet3d` and
+  `from mmdet3d.apis import train_model` succeeded.
+- The actual training CLI still fails before parsing arguments with
+  `KeyError: 'SparseConv2d is already registered in conv layer'`. The conflict
+  is reproducible on the ordinary `maptr_train_torchrun.py --help` import path,
+  not merely a synthetic extension-import order. MMCV 1.7.2 already registers
+  sparse convolution layers, while the repository's legacy
+  `mmdet3d/ops/spconv/conv.py` decorates its own `SparseConv2d` and
+  `SparseConv3d` with `@CONV_LAYERS.register_module()`.
+- Therefore the CUDA 11.8 8-GPU sparse-voxelization comparison has not run
+  yet. Do not interpret this as evidence for or against the old CUDA 11.3
+  runtime hypothesis. Resolve the MMCV/custom-spconv registry compatibility
+  first, with a focused regression test on the real training import path.
+
 ### 2026-08-26: PyTorch 2 / CUDA 11.8 custom-op source compatibility
 
 - A clean 4090_8 `maptr_new` Conda environment now reports Python 3.8,
