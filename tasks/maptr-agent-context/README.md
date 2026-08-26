@@ -44,9 +44,12 @@ workflows.
   It intentionally does not change any CUDA kernel or Python API.
 - Added `tests/test_torch2_cuda_extension_compat.py`; the test was observed
   failing before the port and passing after it. `git diff --check` passed.
-  Server-side rebuild and training validation are still pending. Do not claim
-  the CUDA 11.8 hypothesis proven until the exact 8-GPU Stage-1 smoke reaches
-  and survives sparse voxelization.
+- On 4090_8, after pulling `74ff687`, a complete `python setup.py build_ext
+  --inplace --force` succeeded in `maptr_new`; it copied the voxel, sparse
+  convolution, and all affected PointNet extension `.so` files. Full training
+  validation remains pending because the fresh environment has neither MMCV
+  nor MMDet installed. Do not claim the CUDA 11.8 hypothesis proven until the
+  exact 8-GPU Stage-1 smoke reaches and survives sparse voxelization.
 
 ### 2026-08-26: voxelize c_x/c_z swap root-cause isolation
 
