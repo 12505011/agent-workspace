@@ -30,6 +30,44 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-26: dataset is the trigger — pure-OD control differs by data source
+
+- Built two pure LiDAR-only object-detection configs (no MapTR head, no
+  camera, no fuser; `heads=dict(vectormap=None)`, `camera=None`, `fuser=None`)
+  to isolate the spconv `N=0` / `c_x`/`c_z` swap from the task heads:
+  `configs/maptrv2/westwell/bevfusion_maptr_shared_bev_od_only_lidar_mxg128.py`
+  and `..._nuscenes.py`. Both align to the validated BEVFusion 54 m baseline
+  (`load_dim` 4, range [-54,-54,-1,54,54,7], voxel 0.075, sparse
+  [1440,1440,41], max_voxels [120000,160000], `samples_per_gpu=8`,
+  `seed=0`, `cudnn_benchmark=False`, BEVFusion augmentation).
+- Result matrix:
+  - pure OD + Westwell **mxg128** OD data (`data/nuscenes_od` ->
+    `/storage/disks/d0/QP_NuScene/labeled/mxvlkica128/`): **8-GPU ran
+    normally**, reached `Epoch[1][50/526]`, no swap, no `N=0`.
+  - pure OD + official **nuScenes** data
+    (`data/nuscenes/westwell_nusc_x0_54_yneg10_10_map_infos_temporal_*.pkl`,
+    `load_dim=5, use_dim=[0,1,2,3]`): **still swaps** — `voxelize_out`
+    shows `coor_min=[...,0]`/`coor_max=[39,1439,1439]` on many ranks, i.e.
+    the same whole-column `c_x`/`c_z` swap. This run failed downstream in
+    `batch_norm` (`Expected more than 1 value per channel`, `torch.Size([1,32])`)
+    rather than `N=0`, a different symptom of the same swap.
+- This **rules out** two prior hypotheses at once:
+  - the MapTR head / camera / fuser layer is NOT the trigger (pure OD still
+    swaps on nuScenes);
+  - the sm_86-compat-binary-on-sm_89 execution hypothesis is NOT sufficient
+    (the same sm_86 binaries do NOT swap on mxg128).
+- Remaining suspect is the **data itself**. Top candidate difference: the
+  mxg128 bins are 4-column (`load_dim=4`) while nuScenes bins are 5-column
+  (`load_dim=5`, ring dropped via `use_dim=[0,1,2,3]`); this changes the
+  `LoadPointsFromFile` reshape/memory layout path. Next: verify the actual
+  column count of the mxg128 bins and then bisect whether it is the column
+  count or the point-cloud value distribution that triggers the swap.
+- Note: the "Westwell" data for this control is the mxg128 port dataset under
+  `data/nuscenes_od`; its original BEVFusion stable runs (`lidar_0709/0722/
+  0724/0815`) used the same source but the `/temp_data` mount referenced by
+  those older PKLs is gone; the current `pkl_shared_bev_od_x0_54` PKL uses
+  absolute `/storage/disks/d0/QP_NuScene/labeled/mxvlkica128/...` paths.
+
 ### 2026-08-26: no-sweeps 8-GPU control still reproduces sparse `N=0`
 
 - The Stage-1 control config was changed at runtime to set
