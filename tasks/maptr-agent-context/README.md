@@ -30,6 +30,37 @@ workflows.
 
 ## Handoff notes
 
+### 2026-08-27: ROOT CAUSE FOUND — DataLoader multi-worker inconsistency
+
+- The spconv `N=0` / `c_x`/`c_z` swap is triggered by **DataLoader
+  multi-worker loading under DDP multi-GPU**, not by voxelize kernel
+  concurrency, NCCL, DDP broadcast, seed, sweeps, data source, or the MapTR
+  head. Decisive isolation matrix:
+  - single GPU + `workers_per_gpu=4`: runs clean
+  - 4-GPU + `workers_per_gpu=4`: N=0 on rank 3, first batch
+  - 8-GPU + `workers_per_gpu=4`: N=0 on rank 3, first batch
+  - 8-GPU + serialized voxelize (file lock, commit `2f90190`): still N=0
+    → rules out voxelize-kernel concurrency
+  - **4-GPU + `workers_per_gpu=0`: runs clean** ← decisive
+- Supporting evidence: the 8 rank dumps captured by `MAPTR_DEBUG_POINTS`
+  had **rank 5 as 5 columns while the other 7 ranks were 4 columns**
+  (`voxel_swap_rank5.pt` shape `(31686, 5)` vs `(..., 4)`). Under
+  multi-worker loading the `LoadPointsFromFile` `load_dim=5,
+  use_dim=[0,1,2,3]` path occasionally fails to trim the ring column on some
+  rank, so `dynamic_voxelize_kernel` strides the point cloud with the wrong
+  `num_features` and the `c_x`/`c_z` columns end up swapped.
+- This also explains why mxg128 (native 4-column bins, no 5→4 trim) never
+  reproduces the failure while official nuScenes (5-column bins) does.
+- The earlier "CUDA 11.3 runs sm_86 compat binaries" hypothesis is
+  superseded; that was a red herring. The two pure-OD configs
+  (`od_only_lidar_mxg128.py`, `od_only_lidar_nuscenes.py`) remain valid
+  experiment configs but their "data source" conclusion was an artifact of
+  the multi-worker column-count inconsistency.
+- Workaround: `workers_per_gpu=0` (main-process synchronous loading) makes
+  multi-GPU training stable at a small data-loading throughput cost. Root
+  fix still open: locate the exact pipeline branch that fails to trim the
+  ring column under concurrent DataLoader workers.
+
 ### 2026-08-26: dataset is the trigger — pure-OD control differs by data source
 
 - Built two pure LiDAR-only object-detection configs (no MapTR head, no
