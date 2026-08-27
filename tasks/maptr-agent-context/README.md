@@ -30,38 +30,36 @@ workflows.
 
 ## Handoff notes
 
-### 2026-08-27: ROOT CAUSE FOUND — DataLoader multi-worker inconsistency
+### 2026-08-27: official nuScenes multi-GPU sparse failure — investigation closed with workaround
 
-- The spconv `N=0` / `c_x`/`c_z` swap is triggered by **DataLoader
-  multi-worker loading under DDP multi-GPU**, not by voxelize kernel
-  concurrency, NCCL, DDP broadcast, seed, sweeps, data source, or the MapTR
-  head. Decisive isolation matrix:
-  - single GPU + `workers_per_gpu=4`: runs clean
-  - 4-GPU + `workers_per_gpu=4`: N=0 on rank 3, first batch
-  - 8-GPU + `workers_per_gpu=4`: N=0 on rank 3, first batch
-  - 8-GPU + serialized voxelize (file lock, commit `2f90190`): still N=0
-    → rules out voxelize-kernel concurrency
-  - **4-GPU + `workers_per_gpu=0`: runs clean** ← decisive
-- Supporting evidence: the 8 rank dumps captured by `MAPTR_DEBUG_POINTS`
-  had **rank 5 as 5 columns while the other 7 ranks were 4 columns**
-  (`voxel_swap_rank5.pt` shape `(31686, 5)` vs `(..., 4)`). Under
-  multi-worker loading the `LoadPointsFromFile` `load_dim=5,
-  use_dim=[0,1,2,3]` path occasionally fails to trim the ring column on some
-  rank, so `dynamic_voxelize_kernel` strides the point cloud with the wrong
-  `num_features` and the `c_x`/`c_z` columns end up swapped.
-- This also explains why mxg128 (native 4-column bins, no 5→4 trim) never
-  reproduces the failure while official nuScenes (5-column bins) does.
-- The earlier "CUDA 11.3 runs sm_86 compat binaries" hypothesis is
-  superseded; that was a red herring. The two pure-OD configs
-  (`od_only_lidar_mxg128.py`, `od_only_lidar_nuscenes.py`) remain valid
-  experiment configs but their "data source" conclusion was an artifact of
-  the multi-worker column-count inconsistency.
-- Workaround: `workers_per_gpu=0` (main-process synchronous loading) makes
-  multi-GPU training stable at a small data-loading throughput cost. Root
-  fix still open: locate the exact pipeline branch that fails to trim the
-  ring column under concurrent DataLoader workers.
+- Symptom: official nuScenes Stage 1 LiDAR training can produce whole-column
+  `c_x`/`c_z` swaps at hard-voxelization output; the invalid z coordinate then
+  empties a sparse-convolution stage and raises spconv `N > 0` / `N=0`.
+- Verified behavior:
+  - one GPU with `workers_per_gpu=4` completes an epoch;
+  - four/eight GPUs with `workers_per_gpu=4` reproduce the failure;
+  - multi-GPU with `workers_per_gpu=0` runs normally;
+  - the mxg128 LiDAR-only OD control completes an eight-GPU epoch with normal
+    workers, so the general model, DDP and legacy CUDA environment are usable.
+- Two earlier proposed root causes were disproved and must not be reused as
+  established facts:
+  - DataLoader `fork`: forcing `spawn` was confirmed active on every rank but
+    the same failure remained;
+  - occasional 5-column point tensors: the only 5-column dump was stale. A
+    single current 4-column tensor replayed without DataLoader across multiple
+    GPU processes still swapped on only some ranks. The 5-to-4 nuScenes feature
+    selection is therefore not a proven cause.
+- Serializing voxelization across ranks also failed to resolve the issue, so
+  simultaneous voxel-kernel execution alone is insufficient as an
+  explanation. Seed, sweep count, NCCL transport and MapTR task-head removal
+  likewise did not explain it. The exact low-level trigger remains unresolved.
+- Operational decision: close this investigation for now. For official
+  nuScenes multi-GPU training, set `data.workers_per_gpu=0`. This preserves
+  samples, batch size, augmentations, model graph and losses; the expected
+  cost is reduced CPU prefetch throughput and a different random-number
+  scheduling detail. Keep mxg128 on its normal multi-worker configuration.
 
-### 2026-08-26: dataset is the trigger — pure-OD control differs by data source
+### 2026-08-26: historical intermediate result — pure-OD control differed by data source
 
 - Built two pure LiDAR-only object-detection configs (no MapTR head, no
   camera, no fuser; `heads=dict(vectormap=None)`, `camera=None`, `fuser=None`)
@@ -87,12 +85,10 @@ workflows.
     swaps on nuScenes);
   - the sm_86-compat-binary-on-sm_89 execution hypothesis is NOT sufficient
     (the same sm_86 binaries do NOT swap on mxg128).
-- Remaining suspect is the **data itself**. Top candidate difference: the
-  mxg128 bins are 4-column (`load_dim=4`) while nuScenes bins are 5-column
-  (`load_dim=5`, ring dropped via `use_dim=[0,1,2,3]`); this changes the
-  `LoadPointsFromFile` reshape/memory layout path. Next: verify the actual
-  column count of the mxg128 bins and then bisect whether it is the column
-  count or the point-cloud value distribution that triggers the swap.
+- At this point the 4-column/5-column loading path was only a candidate. Later
+  same-input multi-process replay disproved it as a sufficient root cause; see
+  the 2026-08-27 closure note above. Retain this section only as the historical
+  A/B result that mxg128 worked while official nuScenes failed.
 - Note: the "Westwell" data for this control is the mxg128 port dataset under
   `data/nuscenes_od`; its original BEVFusion stable runs (`lidar_0709/0722/
   0724/0815`) used the same source but the `/temp_data` mount referenced by
@@ -233,9 +229,9 @@ workflows.
 - The old-env experiment is faithful: the old env never had its own nvcc
   (conda `cudatoolkit-11.3.1` is runtime-only, 88 files, no `bin/nvcc`), so
   the original `.so` were always compiled with the system CUDA 11.8 nvcc but
-  hard-coded to gencode `70/75/80/86` (no sm_89). Runtime CUDA 11.3 + compile
-  CUDA 11.8 + sm_86-only cubins running on sm_89 remains the sole unruled-out
-  hypothesis.
+  hard-coded to gencode `70/75/80/86` (no sm_89). At this stage that runtime /
+  compile-architecture combination remained unruled-out; later mxg128 success
+  in the same environment showed that it was not a sufficient explanation.
 
 ### 2026-08-26: BEVFusion trunk 8-GPU training is genuinely stable
 
