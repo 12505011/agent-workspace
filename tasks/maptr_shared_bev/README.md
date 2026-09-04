@@ -24,6 +24,11 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 编译工具链与 PyTorch 运行时不一致。当前 13 个扩展已统一使用 BEVFusion 容器
 中的 CUDA 11.3/GCC 9.4 重新编译；8 卡评估另外固定关闭 cuDNN benchmark。
 
+2026-09-04 增加了多任务采样比例/独立 batch size 的受控实验能力，以及训练、
+评估和离线 TensorBoard 可视化脚本。MapTR 代码仓库的已提交历史仍与远端
+`bev_3dod_maptr_shared_bev_mmdet3d` 一致，但这些最新实验与工具改动尚未提交：
+当前本地为 3 个已修改文件和 16 个未跟踪文件，不能视为已经 push。
+
 ## Verified facts
 
 - OD 与 MapTR 的相机集合及中央相机命名不完全一致。
@@ -68,6 +73,33 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
   `voxelize_max_retries=0`、`voxelize_cpu_fallback=False` 下完整处理 10854 个
   样本，约 348 秒、31.2 task/s；无 `N=0`、非法指令、非法访存、cuDNN 错误。
   结果文件 114 MB，指标为 mAP 0.2601、NDS 0.3182。
+- `AlternatingTaskEpochBasedRunner` 新增 `object_steps_per_map`：在
+  `epoch_size="object"` 下可按 N 次 OD 更新后做 1 次 Map 更新；每个 task batch
+  仍各自执行一次 forward、backward 和 optimizer step，不是梯度累积。
+- `data.task_samples_per_gpu` 可分别设置 OD/Map 的 batch size；只允许用于两个
+  dataset 的 alternating training，并按 `[object, map]` 顺序解析。
+- 实验 F 配置使用 OD:Map 更新数约 16:1、OD batch 8/卡、Map batch 4/卡；
+  2680 个 OD step 对应 168 个 Map step 和 2848 个总 step。
+- Stage1 E2 保持严格 OD:Map 1:1 独立更新，将学习率改为 `1e-4`、500 iter
+  linear warmup 后单调 cosine 衰减，最低比例 0.01；它用于隔离旧 cyclic 峰值
+  对 Map 指标下降的影响。
+- Stage2 D-Frozen 继承 D 的 OD+Map+depth、严格 1:1、4 epoch 设置，唯一训练
+  差异是冻结 `encoders.lidar`（包括其 BN eval 状态）；初始化 checkpoint 为
+  mxg128 reference Stage1 epoch 18 best-object。
+- `tools/3dod_maptr/train_shared_bev_experiment.sh` 将 config、GPU、验证开关、
+  resume 和输出目录集中在可编辑区，并使用较短 `TMPDIR` 避免 AF_UNIX 路径过长。
+- `tools/3dod_maptr/eval_shared_bev_checkpoint.sh` 可独立开关 OD/Map 的 8 卡评估，
+  分别使用 `--task object --eval bbox` 和 `--task map --eval chamfer`。
+- `tools/3dod_maptr/convert_log_to_tensorboard.py` 可把既有 MMCV `.log.json`
+  转为 TensorBoard scalar event，并用同名 `.log` 恢复准确 epoch 长度/global
+  step；指标按 OD、Map、depth、optimizer、time 和 system 分组。
+- 直接运行环境里的 `tensorboard` 会动态加载 Open3D 插件，并因缺少 `plotly`
+  启动失败；转换工具改为只加载 TensorBoard 内置插件，不修改 Open3D/训练环境。
+- 重复转换曾在同一 run 中追加多份完整 event，导致 Scalar 曲线从末尾连回
+  step 0、出现大斜线。现在每次转换只替换输出 run 下自己的
+  `events.out.tfevents.*`，不会修改原始 `.log` 或 `.log.json`。
+- `tools/3dod_maptr/visualize_training_log.sh` 集中设置 work dir、指定日志、输出
+  目录、host/port 和 convert/serve 模式；默认以 `load_fast=false` 启动。
 
 ## Commands and validation
 
@@ -86,6 +118,14 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
   `work_dirs/shared_bev/westwell/map_od_two_stage/eval_epoch20_od_8gpu_cuda113_no_benchmark_full/od_results.pkl`；
   日志中未检出 `N > 0`、`CUDNN_STATUS`、`illegal instruction`、
   `illegal memory` 或 `VoxelizeGuard`。
+- 4090_8 上 `tests/test_alternating_task_schedule.py` 与
+  `tests/test_alternating_task_dataloaders.py` 各 1 项通过，覆盖 16:1 task
+  schedule 和 OD/Map 独立 batch size。
+- 4090_8 上 TensorBoard 转换测试 9 项、shell wrapper 测试 2 项全部通过；
+  覆盖真实 event 回读、global step、同名文本日志 epoch size、动态插件隔离、
+  `load_fast=false` 和重复转换不产生重复 step。
+- 当前 Stage2 D-Frozen 日志已成功转出 TensorBoard 数据；后端验证可见 run
+  `20260904_125808` 和 35 个 scalar tags，`Scalars` 面板已有有效数据。
 
 ## Decisions
 
@@ -100,6 +140,10 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 - 4090_8 的多卡训练和评估配置固定使用 `cudnn_benchmark=False`；不使用
   `CUDA_LAUNCH_BLOCKING=1` 作为常规方案。
 - 正常运行不依赖 voxel retry 或 CPU fallback；最终验证显式将两者关闭。
+- 训练日志可视化采用离线转换，不要求重新训练或提前启用
+  `TensorboardLoggerHook`；重复运行必须保持同一 run 只有一个完整 event 快照。
+- 当前多任务采样实验继续保持“一份 task batch 对应一次独立参数更新”的语义；
+  调整 OD:Map 比例时不暗中改为两次 forward、一次 backward。
 
 ## Open questions / handoff
 
@@ -107,3 +151,9 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 - 四相机 engine 落地时需清除 C++ runtime 示例中的 `num_camera=5` 硬编码。
 - Map 分离评估仍需在 4090 的实际 Map 验证 PKL 上完成一次端到端运行；OD
   分离评估已经完整通过。
+- Stage1 E2、F 与 Stage2 D-Frozen 的最终 OD/Map 指标尚未形成结论，不能只凭
+  loss 或中间 checkpoint 宣布某种采样/LR/冻结策略更优。
+- TensorBoard `Scalars` 已验证；2.14 的 `Time Series` 页面曾显示 `No Runs`。
+  已关闭实验性 fast data server，但重启后的 Time Series UI 结果仍待人工确认。
+- MapTR 仓库最近 19 个工作区改动尚未 commit/push；下一次提交前需逐项审阅，
+  避免把临时实验配置与已确认的通用实现混为一个提交。
