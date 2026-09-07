@@ -138,6 +138,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   7 类并指向独立 PKL 目录。4090_8 已同步，stop-line 两项单测和配置解析通过；
   七类 PKL 已生成并验证：4,212 train / 729 val、token 零重叠，stop-line 实例
   分别为 684/61，运行时 pipeline 能将其转换为 label 6。
+- MapTR 提交 `51cc71e` 为 `maptr_visualize.py` 增加 `--task map|object`，可从
+  联合配置的 `data.<split>.map/object` 中选择对应验证集，并让联合模型只运行所选
+  推理头；脚本通过 `py_compile` 和 `git diff --check`。
 
 ## Decisions
 
