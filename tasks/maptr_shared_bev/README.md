@@ -143,7 +143,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   推理头；脚本通过 `py_compile` 和 `git diff --check`。
 - MapTR 提交 `0931d7e` 增加 `tools/3dod_maptr/visualize_shared_bev_checkpoint.sh`；
   默认可视化 G4 epoch 4 的 Map 三相机结果，checkpoint、任务、GPU、样本范围和
-  输出目录均可通过环境变量覆盖，且使用短 `TMPDIR` 避免 AF_UNIX 路径过长。
+  输出目录集中在脚本顶部修改，且使用短 `TMPDIR` 避免 AF_UNIX 路径过长。
+  后续提交 `49f5e00` 移除命令行环境变量覆盖；`TASK=map/object` 会分别设置 Map
+  GT/阈值或 OD 框阈值，启动命令始终保持不变。
 
 ## Decisions
 
