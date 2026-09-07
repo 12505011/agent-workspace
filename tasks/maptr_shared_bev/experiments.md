@@ -102,7 +102,8 @@ Map-only epoch 22 日志做六类重聚合，结果约为 0.5973；这只是统�
   MapTR 提交 `77f9e77` 已推送；配置、sh、测试和 README 通过 rsync 同步至
   4090_8。本地 `python tests/test_shared_bev_g24_group_lr_config.py -v` 两项
   通过，验证真实 MMCV optimizer 参数组、调度上下界/连续衰减以及数据/模型继承；
-  Python/shell 语法与 diff 检查通过。服务器 SSH 间歇连接超时，远端测试待确认；
+  Python/shell 语法与 diff 检查通过。服务器 SSH 恢复后相同两项测试和 shell
+  语法检查亦通过；新配置及训练 sh 的本地/远端 SHA-256 一致。
   未启动或停止任何训练。
 - 审计纠正：OD-only `stage1_lidar_od_20e_bs8_w8_v3` 日志显示 cyclic LR
   从 1e-4 升到 1e-3（epoch 8/9），此前仅比较 optimizer.lr=1e-4 不充分。
