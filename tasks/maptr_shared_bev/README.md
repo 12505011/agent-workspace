@@ -146,6 +146,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   输出目录集中在脚本顶部修改，且使用短 `TMPDIR` 避免 AF_UNIX 路径过长。
   后续提交 `49f5e00` 移除命令行环境变量覆盖；`TASK=map/object` 会分别设置 Map
   GT/阈值或 OD 框阈值，启动命令始终保持不变。
+- 上述可视化 Python 和 shell 脚本已同步到 4090_8 的
+  `/storage/disks/d0/lelin/maptr/tools/3dod_maptr/`；服务器端 `py_compile` 与
+  `bash -n` 通过，本地/远端 SHA-256 完全一致。
 
 ## Decisions
 
