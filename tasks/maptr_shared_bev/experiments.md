@@ -91,6 +91,24 @@ Map-only epoch 22 日志做六类重聚合，结果约为 0.5973；这只是统�
 
 ## Current decisions
 
+- 2026-09-07 新建 G24 分组 LR 方案（待训练验证）：
+  `bevfusion_maptr_shared_bev_mxg128_reference_one_stage_exp_g_joint_group_lr_24e.py`。
+  shared/OD/LiDAR LR=1e-4，camera backbone=6e-5，Map head=2e-4；外层
+  OD/Map/depth=1/0.12/0.04，depth 内部仍乘 3。16:1、OD 5cam/Map 3cam、
+  Hybrid-A、七类 PKL 不变；seed=0，2000 全局 iter warmup，显式
+  by_epoch=False cosine、min ratio=0.01；24 epochs、每 2 epochs 双任务验证。
+  独立目录为 `one_stage_exp_g_od5cam_map3cam_od16_map1_group_lr_w1_0p12_0p04_24e_bs4_w4`。
+  此选择加强 Map 私有头而保持旧 G depth 强度，不是声称 Map/depth 梯度已平衡。
+  MapTR 提交 `77f9e77` 已推送；配置、sh、测试和 README 通过 rsync 同步至
+  4090_8。本地 `python tests/test_shared_bev_g24_group_lr_config.py -v` 两项
+  通过，验证真实 MMCV optimizer 参数组、调度上下界/连续衰减以及数据/模型继承；
+  Python/shell 语法与 diff 检查通过。服务器 SSH 间歇连接超时，远端测试待确认；
+  未启动或停止任何训练。
+- 审计纠正：OD-only `stage1_lidar_od_20e_bs8_w8_v3` 日志显示 cyclic LR
+  从 1e-4 升到 1e-3（epoch 8/9），此前仅比较 optimizer.lr=1e-4 不充分。
+  旧 G4 每个 epoch 的 LR 基本恒定，符合 MMCV `by_epoch=True` 默认；新方案
+  明确为逐 iteration 调度。AdamW 下不得把 loss scale × LR 或累计 LR
+  当作真实更新倍数/等效训练时长。front3 同时改变多项变量，失败根因仍未隔离。
 - 联合训练优先继续验证 one-stage + OD:Map=16:1；不回到严格 1:1，也不回到会
   将 `1e-4` 基础 LR 放大到更高峰值的旧 cyclic 策略。
 - 24 epoch 扩展实验每 2 epoch 保存并分别评估 OD 与 Map；先核对 epoch 2/4

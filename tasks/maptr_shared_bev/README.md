@@ -14,6 +14,11 @@
 
 ## Current state
 
+2026-09-07 最新选定配置是 G24 分组 LR 实验，见
+[experiments.md](experiments.md#current-decisions)。相机与数据继承原 G24；
+OD/shared LR=1e-4、camera backbone=6e-5、Map head=2e-4，外层权重
+1/0.12/0.04。以下 1:1 与 front3 描述是历史实验，不是当前启动默认值。
+
 已在代码分支 `bev_3dod_maptr_shared_bev_mmdet3d` 实现源相机名称到逻辑
 相机槽位的映射。联合训练继续使用独立 DataLoader 和严格 1:1 交替 runner。
 提交 `2044016` 将联合模型评估拆成 Map 与 OD 两套独立的数据集、任务路由、
@@ -179,9 +184,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   `TensorboardLoggerHook`；重复运行必须保持同一 run 只有一个完整 event 快照。
 - 当前多任务采样实验继续保持“一份 task batch 对应一次独立参数更新”的语义；
   调整 OD:Map 比例时不暗中改为两次 forward、一次 backward。
-- 16:1 pilot 不再沿用为早期 1:1 交替训练标定的 `vectormap=0.06、depth=0.04`；
-  先保持 Map-only 的外层 Map:depth 比例 1:1，再保守地把二者设为 0.5。由于
-  DepthLSS 内部另乘 3，外层 depth 不重复设为 3，也不机械按采样比乘 16。
+- 最新 G24 分组 LR 方案采用 `vectormap=0.12、depth=0.04`；保留原 G 的
+  depth 强度，适度增加 Map 监督和私有头 LR。历史 front3 的 0.5/0.5 和
+  Map head 6e-4 组合在前两轮表现不佳；多个变量同时改变，不能归因为单一参数。
 
 ## Open questions / handoff
 
