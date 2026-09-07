@@ -136,7 +136,8 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 - MapTR 提交 `11430bc` 为新的 G24 恢复 `stop_line`：converter 保留并抽取
   Westwell `line_token` stop line，离线数据集映射为 label 6，G24 head/coder 为
   7 类并指向独立 PKL 目录。4090_8 已同步，stop-line 两项单测和配置解析通过；
-  七类 PKL 尚未生成，因此尚不能启动该训练。
+  七类 PKL 已生成并验证：4,212 train / 729 val、token 零重叠，stop-line 实例
+  分别为 684/61，运行时 pipeline 能将其转换为 label 6。
 
 ## Decisions
 
