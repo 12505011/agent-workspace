@@ -25,9 +25,9 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 中的 CUDA 11.3/GCC 9.4 重新编译；8 卡评估另外固定关闭 cuDNN benchmark。
 
 2026-09-04 增加了多任务采样比例/独立 batch size 的受控实验能力，以及训练、
-评估和离线 TensorBoard 可视化脚本。MapTR 代码仓库的已提交历史仍与远端
-`bev_3dod_maptr_shared_bev_mmdet3d` 一致，但这些最新实验与工具改动尚未提交：
-当前本地为 3 个已修改文件和 16 个未跟踪文件，不能视为已经 push。
+评估和离线 TensorBoard 可视化脚本。2026-09-07 的实验审计表明，从头端到端、
+OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案；详细设置、
+逐实验结果与 Map 指标口径见 [experiments.md](experiments.md)。
 
 ## Verified facts
 
@@ -126,10 +126,18 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
   `load_fast=false` 和重复转换不产生重复 step。
 - 当前 Stage2 D-Frozen 日志已成功转出 TensorBoard 数据；后端验证可见 run
   `20260904_125808` 和 35 个 scalar tags，`Scalars` 面板已有有效数据。
+- Map Chamfer 评估在 0.5 m、1.0 m、1.5 m 三档阈值分别计算 AP；每类先对三档
+  AP 求平均，最终再对配置中的全部类别求平均。
+- 历史 Map-only epoch 22 的 0.6456 使用 7 类（包含 `stop_line`），历史
+  Shared-BEV/G4 使用 6 类，因此不能直接比较；新的 G24 已采用独立七类数据和
+  7 类 head 配置，不改写历史六类数据。
+- One-stage G 4-epoch pilot 的 epoch 4 达到 OD mAP 0.5651、NDS 0.5791、Map
+  mAP 0.4445；四轮内两个任务的指标均单调上升。
 
 ## Decisions
 
-- 保留现有 OD/Map 独立 batch 的 1:1 交替更新，不将两类样本拼入同一 batch。
+- 保留 OD/Map 独立 batch 和每 batch 一次独立更新的语义；当前联合训练优先采用
+  16:1 更新频率，不将两类样本拼入同一 batch。
 - 使用任务独立的源相机列表和逻辑槽位；不通过黑图或伪标定补齐相机数。
 - 不重新生成 PKL；相机筛选和别名统一在数据 pipeline 完成。
 - 四相机部署使用独立 ONNX/TensorRT profile，不复用三或五相机 engine。
@@ -151,8 +159,8 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 - 四相机 engine 落地时需清除 C++ runtime 示例中的 `num_camera=5` 硬编码。
 - Map 分离评估仍需在 4090 的实际 Map 验证 PKL 上完成一次端到端运行；OD
   分离评估已经完整通过。
-- Stage1 E2、F 与 Stage2 D-Frozen 的最终 OD/Map 指标尚未形成结论，不能只凭
-  loss 或中间 checkpoint 宣布某种采样/LR/冻结策略更优。
+- One-stage G 的 24-epoch 扩展实验仍需确认 epoch 2/4 能否复现 pilot，并持续
+  每 2 epoch 同时评估 OD 与 Map，防止后期任务退化。
 - TensorBoard `Scalars` 已验证；2.14 的 `Time Series` 页面曾显示 `No Runs`。
   已关闭实验性 fast data server，但重启后的 Time Series UI 结果仍待人工确认。
 - MapTR 仓库最近 19 个工作区改动尚未 commit/push；下一次提交前需逐项审阅，
