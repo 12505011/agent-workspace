@@ -133,12 +133,17 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   7 类 head 配置，不改写历史六类数据。
 - One-stage G 4-epoch pilot 的 epoch 4 达到 OD mAP 0.5651、NDS 0.5791、Map
   mAP 0.4445；四轮内两个任务的指标均单调上升。
-- MapTR 提交 `3b44a8d` 增加独立 4-epoch 前视相机/权重 pilot：OD 与 Map 每个
+- MapTR 提交 `3b44a8d`，后续由 `e373368`、`84691ff`、`91b66ed` 完善的独立
+  4-epoch 前视相机/权重 pilot：OD 与 Map 每个
   batch 都固定输入 3 路前视相机。两者共享左右相机，但中央源分别为
   `CAM_FRONT_MID` 与 `CAM_FRONT_TOP_MID`，所以跨任务共涉及 4 个物理相机名，
-  不是单个 batch 输入 4 路。OD:Map 更新频率保持 16:1；外层 loss scale 改为
-  `object=1, vectormap=1, depth=1`，DepthLSS 内部权重仍为 3。配置解析验证了
-  train/val 相机筛选、4 epochs、每 epoch 双任务评估及七类 Map PKL 均正确。
+  不是单个 batch 输入 4 路。OD:Map 更新频率保持 16:1；最终外层 loss scale 为
+  `object=1, vectormap=0.5, depth=0.5`，DepthLSS 内部权重仍为 3。Map 中央相机
+  临时恢复 Map-only 的固定 stretch，关闭该相机的旋转、垂直平移和翻转。优化器
+  base LR 为 `1e-4`，Camera backbone 为 `6e-5`、Map head 为 `6e-4`，其余模块
+  为 `1e-4`；使用 500 iter warmup + cosine、min ratio `0.001`。配置解析和实际
+  dummy optimizer 参数组验证通过；4 epochs、每 epoch 双任务评估及七类 Map PKL
+  均正确。
 - MapTR 提交 `11430bc` 为新的 G24 恢复 `stop_line`：converter 保留并抽取
   Westwell `line_token` stop line，离线数据集映射为 label 6，G24 head/coder 为
   7 类并指向独立 PKL 目录。4090_8 已同步，stop-line 两项单测和配置解析通过；
@@ -175,7 +180,7 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 - 当前多任务采样实验继续保持“一份 task batch 对应一次独立参数更新”的语义；
   调整 OD:Map 比例时不暗中改为两次 forward、一次 backward。
 - 16:1 pilot 不再沿用为早期 1:1 交替训练标定的 `vectormap=0.06、depth=0.04`；
-  先保持 Map-only 的外层 Map:depth 比例 1:1，再将二者整体恢复到 1.0。由于
+  先保持 Map-only 的外层 Map:depth 比例 1:1，再保守地把二者设为 0.5。由于
   DepthLSS 内部另乘 3，外层 depth 不重复设为 3，也不机械按采样比乘 16。
 
 ## Open questions / handoff
