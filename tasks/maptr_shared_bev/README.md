@@ -141,6 +141,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 - MapTR 提交 `51cc71e` 为 `maptr_visualize.py` 增加 `--task map|object`，可从
   联合配置的 `data.<split>.map/object` 中选择对应验证集，并让联合模型只运行所选
   推理头；脚本通过 `py_compile` 和 `git diff --check`。
+- MapTR 提交 `0931d7e` 增加 `tools/3dod_maptr/visualize_shared_bev_checkpoint.sh`；
+  默认可视化 G4 epoch 4 的 Map 三相机结果，checkpoint、任务、GPU、样本范围和
+  输出目录均可通过环境变量覆盖，且使用短 `TMPDIR` 避免 AF_UNIX 路径过长。
 
 ## Decisions
 
