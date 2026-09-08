@@ -165,6 +165,13 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 - 上述可视化 Python 和 shell 脚本已同步到 4090_8 的
   `/storage/disks/d0/lelin/maptr/tools/3dod_maptr/`；服务器端 `py_compile` 与
   `bash -n` 通过，本地/远端 SHA-256 完全一致。
+- 2026-09-08 修正联合 checkpoint 的相机 Map 可视化：旧实现的 `--show-gt`
+  只在 BEV/map 面板绘制 GT，`camera-*` 实际只有预测。提交 `e875088` 恢复
+  Map-only `vis_mAP_epoch_22_val_raw_fixed` 的约定：原图上预测为同类实色实线、
+  GT 为同类浅色虚线，二者共用 PKL 中原始 `lidar2img` 和 `map_z=0.0`；同时
+  修正 OpenCV BGR 颜色并补齐 7 类颜色。默认 launcher 将完整 729 帧写入新的
+  `vis_epoch_4_val_raw_fixed`，避免与旧错误目录混合。服务器端原始 GT 读取及
+  虚线渲染 smoke test 通过，本地/远端脚本 SHA-256 一致。
 
 ## Decisions
 
