@@ -91,6 +91,22 @@ Map-only epoch 22 日志做六类重聚合，结果约为 0.5973；这只是统�
 
 ## Current decisions
 
+- 2026-09-09 为 alternating multi-task runner 增加按同一全局 iteration 窗口
+  聚合的紧凑日志。旧 MMCV `LogBuffer.average(n)` 对稀疏 key 各自取最近 `n`
+  次出现，在 16:1 调度下会把 50 个 OD batch 与约 850 个全局 step 内的 50 个
+  Map batch 放在同一行，不能直接比较。新日志区分 `loss/overall`（真实调度加权
+  目标）、`loss/task_balanced`（OD/Map 等权诊断值，不参与反传）、`loss/od`、
+  `loss/map`、Map head/depth/main/aux、去除外层 scale 的 raw loss、实际任务占比
+  和 grad norm；精确为零的聚合项不打印。Map 评估改为一张 AP@0.5/1.0/1.5
+  表，同时明确 `mAP(active GT)` 与历史主指标 `mAP(all configured)`；测试脚本
+  不再向终端倾倒完整 metrics dict，而是在结果目录保存 `od_metrics.json` 或
+  `map_metrics.json`。4090_8 的 `maptr` 环境完整单测 46 项通过，新增核心测试
+  6 项通过；本地/远端 8 个关键文件 SHA-256 一致。该改动只改变日志与展示，
+  不改变 loss、反传、优化器更新或评估数值。
+- 2026-09-09 新建 fresh decoder-GN 对照配置：只将共享 BEV decoder 的 SECOND
+  与 SECONDFPN 归一化由 BN 改为 GN32（eps=1e-3）；camera、LiDAR sparse
+  encoder、fuser 与任务头归一化保持参考配置。训练仍从头开始，继承 G24 的
+  16:1、group LR、loss scale、24 epoch cosine 和每 2 epoch 评估设置。
 - 2026-09-07 新建 G24 分组 LR 方案（待训练验证）：
   `bevfusion_maptr_shared_bev_mxg128_reference_one_stage_exp_g_joint_group_lr_24e.py`。
   shared/OD/LiDAR LR=1e-4，camera backbone=6e-5，Map head=2e-4；外层
