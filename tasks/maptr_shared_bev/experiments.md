@@ -91,6 +91,12 @@ Map-only epoch 22 日志做六类重聚合，结果约为 0.5973；这只是统�
 
 ## Current decisions
 
+- 2026-09-09 decoder-GN G24 已从同目录 `epoch_2.pth` 配置为真正的
+  `resume_from` 续训：恢复模型、optimizer、LR scheduler、epoch 和 global
+  iteration，下一轮从 epoch 3 开始并保持原 24-epoch horizon、每 2 epoch
+  评估。启动脚本仍保留 `ALLOW_EXISTING_RUN_DIR=0`；非空 `RESUME_FROM` 会显式
+  允许复用同一 work_dir。4090_8 已确认 checkpoint 非空、配置总轮数 24、评估
+  interval 2，shell 语法与相关 5 项测试通过；未由 agent 启动训练。
 - 2026-09-09 为 alternating multi-task runner 增加按同一全局 iteration 窗口
   聚合的紧凑日志。旧 MMCV `LogBuffer.average(n)` 对稀疏 key 各自取最近 `n`
   次出现，在 16:1 调度下会把 50 个 OD batch 与约 850 个全局 step 内的 50 个
