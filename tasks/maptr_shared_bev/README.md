@@ -39,9 +39,18 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 - OD 分片 `0bf177fb36e24a28ac1f30891d07b88f` 使用直接根目录结构（无中间
   `nusc/`），包含 972 个 sample；`log.location=mxvlkica`，地图文件为
   `maps/expansion/mxvlkica.json`。相机通道为前中/前中左/前中右和后上左/右
-  5 路。该分片没有 `maps/basemap/mxvlkica.png`，但 GT-only 矢量投影工具仍
-  成功生成三前视拼图；实测输出为
+  5 路。该分片没有 `maps/basemap/mxvlkica.png`。GT-only 矢量投影工具虽然
+  能生成三前视拼图，但原始结果的地图几何投影明显错误，因此“成功生成文件”
+  不能作为投影正确性的验证；问题输出为
   `work_dirs/mxvlkica_map_gt_projection/0bf177fb36e24a28ac1f30891d07b88f_example/1776705899.999728_surround_view.jpg`。
+- `mxvlkica` 现有 30 个 OD shard 的 `ego_pose.rotation` 均呈 Y-up 语义：
+  `body-Y` 与 `world-Z` 的绝对点积中位数约 0.94--0.95，且每个 shard 的
+  up-axis winner 都是 Y；但 `LIDAR_TOP` 的 `calibrated_sensor` 是单位
+  lidar-to-ego，MapTR/nuScenes 需要 Z-up ego，二者语义不一致。地图 node 与
+  ego translation 的全局范围相交，所以不是拿错场地地图。Jinke 样例是 Z-up，
+  但其 ego-pose 来源有过 `gnss/odom` 与 `localization/odom` 的特殊修正，不能
+  直接作为墨西哥数据的固定旋转模板。应优先修复/重生成 ego pose 来源或明确
+  Y-up 到车辆 Z-up 的外参；单独调 `map_z` 无法解决该问题。
 - OD 与 MapTR 的相机集合及中央相机命名不完全一致。
 - 后续不同任务的相机数量也可能不同。
 - `bevfusion_maptr_shared_bev_nuscenes_map_od_alternating.py` 当前分别使用
