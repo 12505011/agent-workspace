@@ -54,16 +54,82 @@ checkpoint/config shapes instead of copying geometry from an older engine.
 - [x] Target and reference runtime branches verified.
 - [x] Existing `task/maptr-deployment` notes inspected as deployment reference.
 - [x] Existing Shared-BEV ONNX exporter entry points located.
-- [ ] Export the selected checkpoint to ONNX.
+- [x] Export the selected checkpoint to six ONNX graphs and record their
+  interfaces/hashes in `export_manifest.json`.
 - [ ] Validate ONNX outputs against PyTorch on fixed samples.
-- [ ] Build TensorRT engines for the selected target GPU/TensorRT environment.
+- [x] Build an FP16 TensorRT smoke-test bundle on the local RTX3060 with
+  TensorRT 8.5.2.2/CUDA 11.4.
+- [ ] Rebuild the validated ONNX graphs in the final target GPU/TensorRT
+  environment.
 - [ ] Validate TensorRT outputs against ONNX/PyTorch.
 - [ ] Integrate the shared runtime and both postprocessing/output paths into
   `release-test-mapod-share-model-5.7`.
 - [ ] Update and validate `79-perception.yaml` for the new model contract.
 - [ ] Build, replay, and verify both OD and Map outputs together.
 
-No ONNX or TensorRT engine has been produced for this selected checkpoint yet.
+## Verified export contract (2026-09-10)
+
+Export directory (generated artifact, not tracked in Git):
+
+`work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch12_4cam/onnx`
+
+The model uses a shared decoded BEV tensor shaped `[1, 512, 180, 180]`. The OD
+head consumes that tensor directly. The Map head crops it to
+`[1, 512, 34, 90]`, applies its learned 512-to-256 projection and returns
+classification `[4, 1, 40, 7]`, bbox `[4, 1, 40, 4]`, and point
+`[4, 1, 40, 15, 2]` outputs. The OD head outputs tensors shaped
+`[1, 180, 180, 200]`, `[1, 180, 180, 140]`, and `[1, 180, 180, 40]`.
+
+Six exported graphs and their MD5 values:
+
+| Graph | MD5 | Interface summary |
+| --- | --- | --- |
+| `camera.backbone.onnx` | `9fad262c47d56248f3aa37b036ebed4e` | image/depth for four cameras to image/depth features |
+| `camera.vtransform.onnx` | `f8c040594e5a3487d724481913e8f87c` | `[1,80,360,360]` to `[1,80,180,180]` |
+| `lidar.backbone.xyz.onnx` | `787d9b91ac50447adadc7fd571c165ca` | custom sparse graph to `[1,256,180,180]` |
+| `fuser.onnx` | `f0cdd3b6842142f1d241684781d95a5a` | camera 80ch + LiDAR 256ch to shared 512ch BEV |
+| `anchorhead.bbox.onnx` | `45d47e21a922bf6058db32122de02c7c` | shared BEV to three OD outputs |
+| `maptr_decoder_head.onnx` | `3b7fcd4f9b5d117ebf27357d61d72a89` | shared BEV to three Map outputs |
+
+`inspect_shared_bev_onnx.py` passed every declared input/output name and static
+shape. Stock ONNX checker passed all standard graphs and the Map graph. The
+LiDAR graph intentionally uses the existing custom sparse operators in the
+default ONNX domain and therefore requires the runtime sparse parser rather
+than stock ONNX Runtime/checker.
+
+The directory name says `od5cam`, but both the executable config and saved
+training config prove that each task actually saw three cameras:
+
+- OD: `CAM_FRONT_MID`, `CAM_FRONT_MID_LEFT`, `CAM_FRONT_MID_RIGHT`
+- Map: `CAM_FRONT_TOP_MID`, `CAM_FRONT_MID_LEFT`, `CAM_FRONT_MID_RIGHT`
+
+Their union is four physical cameras. The first unified export therefore uses
+four cameras as an explicit deployment candidate. This is not yet considered
+final: replay must compare the unified four-camera route with task-specific
+three-camera behavior before the profile contract is frozen.
+
+## Local TensorRT smoke-test result (2026-09-10)
+
+Build directory:
+
+`work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch12_4cam/build_rtx3060_cuda114_trt8522_fp16`
+
+The dedicated `build_shared_bev_multitask_engine.sh` produced and executed all
+five FP16 plans on the local RTX3060:
+
+| Plan | MD5 | Smoke inference |
+| --- | --- | --- |
+| `camera.backbone.plan` | `ffcdd87de69bfc812422970931b17c8b` | Passed |
+| `camera.vtransform.plan` | `ca9a2effd39d1b163a156a85c54e5c69` | Passed |
+| `fuser.plan` | `7160c600192e9ba3b668a78ba2798b41` | Passed |
+| `anchorhead.bbox.plan` | `d9a2269df51073858d668df96708e3e0` | Passed |
+| `maptr_decoder_head.plan` | `954a677a890e9447843670b58b24b4ab` | Passed with `libmaptr_plugins.so` loaded |
+
+The sparse LiDAR ONNX remains a runtime-parsed component and is bundled beside
+the plans. Local build dependencies were TensorRT 8.5.2.2, CUDA 11.4 and cuDNN
+8.2.4. TensorRT logged that it was linked against cuDNN 8.6.0 but both engine
+build and smoke execution passed. These RTX3060 plans are validation artifacts,
+not portable Orin deliverables.
 
 ## Deployment plan
 
