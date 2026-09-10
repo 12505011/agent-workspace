@@ -106,6 +106,20 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   定位 topic、时间同步、四元数 `xyzw -> wxyz` 写入和 localization-to-ego
   轴变换，不增加场站专用投影分支。
 
+### Deployment handoff artifact (2026-09-10)
+
+- 已将 4090_8 上 decoder-GN 实验的 `epoch_12.pth` 与同目录 saved config
+  复制（非移动/删除）到本地镜像目录：
+  `work_dirs/shared_bev/westwell/mxg128_reference_one_stage/one_stage_exp_g_decoder_gn_od5cam_map3cam_od16_map1_group_lr_w1_0p12_0p04_24e_bs4_w4/`。
+- `epoch_12.pth`：503,454,341 bytes，MD5
+  `c5d0f80ca8228f91ee754813cc058237`。
+- `bevfusion_maptr_shared_bev_mxg128_reference_one_stage_exp_g_decoder_gn_24e.py`：
+  153,233 bytes，MD5 `ac747192ade3d96cb591413542f32ed4`。两端大小与
+  MD5 均一致，服务器原文件保留。
+- work_dir 下的 `.py` 是 MMCV 展开的配置快照，部署导出时只用于核对模型结构；
+  不能直接作为可执行配置。后续应选择本地 repo 中与 decoder GN、相机数、BEV
+  尺寸、decoder 层数和类别数一致的源 config，再开始 ONNX/TensorRT 导出。
+
 ## Verified facts
 
 - OD 分片 `0bf177fb36e24a28ac1f30891d07b88f` 使用直接根目录结构（无中间
