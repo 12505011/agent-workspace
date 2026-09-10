@@ -51,6 +51,11 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   但其 ego-pose 来源有过 `gnss/odom` 与 `localization/odom` 的特殊修正，不能
   直接作为墨西哥数据的固定旋转模板。应优先修复/重生成 ego pose 来源或明确
   Y-up 到车辆 Z-up 的外参；单独调 `map_z` 无法解决该问题。
+- Map 到 ego 再到 camera 的投影公式应跨场站保持一致。2026-09-10 曾验证过按
+  location/轨迹自动附加 yaw 可以在单个 mxvlkica 样例上抵消约 57° 的表象，
+  但该方案会掩盖 `ego_pose.rotation` 的生成错误，已完整撤回且未提交。后续
+  应对齐原始定位四元数、nuScenes `wxyz` 写入和 localization-to-ego 轴变换，
+  不在 Map 转换或可视化阶段增加场站专用旋转分支。
 - OD 与 MapTR 的相机集合及中央相机命名不完全一致。
 - 后续不同任务的相机数量也可能不同。
 - `bevfusion_maptr_shared_bev_nuscenes_map_od_alternating.py` 当前分别使用
