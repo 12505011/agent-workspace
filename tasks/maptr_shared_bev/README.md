@@ -7,20 +7,22 @@
 ## Scope
 
 - 当前数据：`nuscenes_map` 与 `nuscenes_od`。
-- 当前 PKL：`pkl_shared_bev_map_x0_54` 与 `pkl_shared_bev_od_x0_54`。
-- 当前两任务均使用前视三相机，但中央相机命名不同：MapTR 为
-  `CAM_FRONT_TOP_MID`，OD 为 `CAM_FRONT_MID`。
-- 后续扩展目标：OD 使用 5 相机，MapTR 仍使用 3 相机。
+- OD 使用 `pkl_shared_bev_od_x0_54`；正式七类 Map 实验使用独立的
+  `pkl_shared_bev_map_x0_54_7cls_stopline`，历史六类 PKL 保留用于复现。
+- 当前 G/GN 方案为 OD 5 相机、MapTR 前视 3 相机。中央相机源名称不同：
+  MapTR 为 `CAM_FRONT_TOP_MID`，OD 为 `CAM_FRONT_MID`。
 
 ## Current state
 
-2026-09-07 最新选定配置是 G24 分组 LR 实验，见
-[experiments.md](experiments.md#current-decisions)。相机与数据继承原 G24；
-OD/shared LR=1e-4、camera backbone=6e-5、Map head=2e-4，外层权重
-1/0.12/0.04。以下 1:1 与 front3 描述是历史实验，不是当前启动默认值。
+当前训练是基于 G24 分组 LR 的 fresh decoder-GN 实验，见
+[experiments.md](experiments.md#current-decisions)。相机、数据、调度和 loss
+权重继承 G24；只将共享 BEV decoder 的 BN 改为 GN。OD/shared LR=1e-4、
+camera backbone=6e-5、Map head=2e-4，外层权重 1/0.12/0.04。以下 1:1 与
+front3 描述是历史实验，不是当前启动默认值。
 
 已在代码分支 `bev_3dod_maptr_shared_bev_mmdet3d` 实现源相机名称到逻辑
-相机槽位的映射。联合训练继续使用独立 DataLoader 和严格 1:1 交替 runner。
+相机槽位的映射。联合训练使用两个独立 DataLoader 和交替 runner；早期 E/E2
+采用严格 1:1，当前 G/GN 正式方案采用 OD:Map=16:1。
 提交 `2044016` 将联合模型评估拆成 Map 与 OD 两套独立的数据集、任务路由、
 指标和最佳 checkpoint 状态；独立测试进程可用 `--task map|object` 选择任务。
 
@@ -33,6 +35,76 @@ MapTR head、数据列数、相机数、NCCL 或 CUDA 源码差异，而是 CUDA
 评估和离线 TensorBoard 可视化脚本。2026-09-07 的实验审计表明，从头端到端、
 OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案；详细设置、
 逐实验结果与 Map 指标口径见 [experiments.md](experiments.md)。
+
+## Key fixes and current handoff (2026-09-10)
+
+### Data and evaluation contract
+
+- 固定原始数据规模：OD 为 39,933 train / 4,374 val，Map 为 4,212 train /
+  729 val；CBGS 后的 loader 长度不能当作原始样本数。联合模型必须分别使用
+  OD val 与 Map val，历史上混用验证 PKL 得到的指标需要重新评估。
+- Map 已恢复 `stop_line`，当前正式训练/评估采用 7 类。历史 Shared-BEV 六类
+  mAP 与 Map-only 七类 mAP 不能直接比较；主指标为每类 AP@0.5/1.0/1.5 先求
+  平均，再对全部配置类别（包括零 GT 类）求平均。
+- `maptr_test.py` 强制通过 `--task object|map` 路由独立验证集和任务头；训练内
+  验证也保存 OD/Map 独立 best 状态，避免两个任务互相覆盖 checkpoint。
+
+### Training semantics and selected baseline
+
+- 放弃表现不稳定的两阶段高频 1:1 联合微调，当前基线为 one-stage G：从头
+  端到端训练、OD:Map=16:1、每个 task batch 各自一次 forward、backward 和
+  optimizer step，不做跨任务梯度累积。
+- 当前 G24/GN 延续 24 epoch、每 2 epoch 双任务评估、AdamW、warmup + 按
+  iteration cosine。分组 LR 为 shared/OD/LiDAR `1e-4`、camera backbone
+  `6e-5`、Map head `2e-4`；外层 loss scale 为 OD/Map/depth=
+  `1/0.12/0.04`，depth 模块内部仍乘 3。
+- 4-epoch G pilot 的 epoch 4 为 OD mAP/NDS `0.5651/0.5791`、Map mAP
+  `0.4445`，是目前已验证的联合 Pareto 基线；24-epoch 结果必须与此使用同一
+  数据、类别和评估口径后再比较。
+
+### BN diagnosis and model-side fix
+
+- 对同一 epoch-20 权重只重算 BN running statistics（不反传、不更新权重）后，
+  Map 指标可大幅恢复而 OD 会下降，证明掉点不只是“Map 没学到”，共享 BN
+  统计分布冲突是主要因素之一。
+- 分模块校准确认 decoder 是最强冲突点：Map 约 `0.184 -> 0.447`，OD 约
+  `0.610 -> 0.591`；camera、LiDAR encoder 次之，fuser 基本无贡献。全模型
+  换 Map BN 会明显伤害 OD，因此不作为最终方案。
+- 最终部署要求一个模型、一次共享前向同时输出 OD+Map，故 task-specific BN /
+  双 checkpoint 只保留为诊断工具。当前结构性对照仅将共享 BEV decoder 的
+  SECOND/SECONDFPN 从 BN 改为 GN32（eps `1e-3`），其余 camera、LiDAR sparse
+  encoder、fuser 和任务头保持原状，从头训练；没有把全模型 BN 粗暴替换为 GN。
+- decoder-GN 实验已通过 config、resume 和相关测试验证；当前训练从同目录
+  `epoch_2.pth` 真正恢复 optimizer、LR scheduler、epoch/global iteration，
+  而不是只加载模型权重重新开始。
+
+### Runtime and tooling fixes
+
+- CUDA `illegal instruction`/cuDNN 崩溃最终定位为扩展编译工具链与 PyTorch
+  cu113 不一致；13 个扩展已用 CUDA 11.3/GCC 9.4 重编。8 卡常规运行固定
+  `cudnn_benchmark=False`，不依赖 `CUDA_LAUNCH_BLOCKING=1`、voxel retry
+  或 CPU fallback。
+- 训练、评估、可视化均已有可编辑 shell 入口；使用短 `TMPDIR` 规避
+  `AF_UNIX path too long`。离线 TensorBoard 转换会替换自身 event 快照，
+  避免重复转换造成曲线回连到 step 0。
+- 多任务日志现按同一全局窗口输出：`loss/overall` 是按实际 16:1 频率加权的
+  训练目标，`loss/task_balanced=(loss/od+loss/map)/2` 仅用于等权观察；Map
+  进一步拆成 head/depth 与 main/aux，`loss_raw/*` 为去除外层 scale 的量。
+- 已定位一个尚未修复的展示 bug：compact logger 用后缀 `map` 搜索 OD mAP，
+  会先匹配 `loss/map`，因此日志中的 `eval/od_mAP` 可能与 `loss/map` 完全相同。
+  该字段当前禁止作为评估结果；真实 OD mAP 以独立 object 评估日志及
+  `od_metrics.json` 为准。修复时应精确匹配 `object/map` 等评估 key，并补回归
+  测试。
+
+### Map projection / ego-pose conclusion
+
+- Map→ego→camera 的投影链应对所有场站一致。mxvlkica 地图范围与 ego
+  translation 相交，但其现有 `ego_pose.rotation` 解析后呈 body-Y-up，而
+  nuScenes/MapTR 与单位 `LIDAR_TOP` sensor-to-ego 预期 body-Z-up。
+- 曾尝试按 location/轨迹自动补约 57° yaw；该方法只能抵消表象并会掩盖数据
+  生成错误，已在本地和 4090_8 完整撤回，未进入 MapTR 提交。下一步只检查
+  定位 topic、时间同步、四元数 `xyzw -> wxyz` 写入和 localization-to-ego
+  轴变换，不增加场站专用投影分支。
 
 ## Verified facts
 
@@ -68,8 +140,8 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   `num_cams=3` 主要属于相机特征/BEVFormer兼容路径，不应作为异构相机接口。
 - `FilterCameraViews` 现在同时输出逻辑 `camera_names` 和原始
   `camera_source_names`，并同步筛选图像与标定元数据。
-- 联合配置分别定义 `map_camera_slots` 和 `od_camera_slots`，当前均为 3 路，
-  后续可只扩展 OD 到 5 路而不改变 MapTR。
+- 联合配置分别定义 `map_camera_slots` 和 `od_camera_slots`；历史 front3 pilot
+  两者均为 3 路，当前 G/GN 已扩展为 OD 5 路、MapTR 3 路。
 - PyTorch camera backbone/LSS 可处理 iteration 之间不同的相机数；ONNX/TensorRT
   应为 3/4/5 相机建立独立固定 profile，runtime `num_camera` 必须一致。
 - 联合配置的验证集现在显式分为 `data.val.map` 和 `data.val.object`：Map 使用
@@ -219,11 +291,13 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 
 - 四相机部署的实际源相机名称、逻辑槽位和固定顺序尚待确认。
 - 四相机 engine 落地时需清除 C++ runtime 示例中的 `num_camera=5` 硬编码。
-- Map 分离评估仍需在 4090 的实际 Map 验证 PKL 上完成一次端到端运行；OD
-  分离评估已经完整通过。
-- One-stage G 的 24-epoch 扩展实验仍需确认 epoch 2/4 能否复现 pilot，并持续
-  每 2 epoch 同时评估 OD 与 Map，防止后期任务退化。
+- decoder-GN 长训练需继续每 2 epoch 用独立 OD/Map 验证集评估；重点观察
+  epoch 10 以后 Map 是否再次降到 0.1x，同时确认 OD 是否保持 G 基线附近。
+- 修复 compact logger 的 `eval/od_mAP` 后缀误匹配，并增加“训练 loss key 不得
+  被识别成 eval key”的回归测试。
+- 定位并修复 mxvlkica `ego_pose.rotation` 的生成链；在修复前，不用自动 yaw
+  补偿生成新 Map PKL，也不把错误相机投影用于判断模型质量。
 - TensorBoard `Scalars` 已验证；2.14 的 `Time Series` 页面曾显示 `No Runs`。
   已关闭实验性 fast data server，但重启后的 Time Series UI 结果仍待人工确认。
-- MapTR 仓库最近 19 个工作区改动尚未 commit/push；下一次提交前需逐项审阅，
-  避免把临时实验配置与已确认的通用实现混为一个提交。
+- 本地 MapTR 工作区截至 2026-09-10 仅有用户持有的
+  `tools/3dod_maptr/maptr_visualize.py` 未提交修改；后续提交不得误带入。
