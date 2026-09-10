@@ -36,6 +36,12 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
 
 ## Verified facts
 
+- OD 分片 `0bf177fb36e24a28ac1f30891d07b88f` 使用直接根目录结构（无中间
+  `nusc/`），包含 972 个 sample；`log.location=mxvlkica`，地图文件为
+  `maps/expansion/mxvlkica.json`。相机通道为前中/前中左/前中右和后上左/右
+  5 路。该分片没有 `maps/basemap/mxvlkica.png`，但 GT-only 矢量投影工具仍
+  成功生成三前视拼图；实测输出为
+  `work_dirs/mxvlkica_map_gt_projection/0bf177fb36e24a28ac1f30891d07b88f_example/1776705899.999728_surround_view.jpg`。
 - OD 与 MapTR 的相机集合及中央相机命名不完全一致。
 - 后续不同任务的相机数量也可能不同。
 - `bevfusion_maptr_shared_bev_nuscenes_map_od_alternating.py` 当前分别使用
