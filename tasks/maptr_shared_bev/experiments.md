@@ -157,6 +157,14 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `6e-5`、Map head `2e-4`，OD/Map/depth=`1/0.12/0.04`；24 epoch，每 2 epoch
   分任务评估并保存 checkpoint。这是受控起点，不是已验证的最优 nuScenes
   loss 权重。
+- 深度监督最终采用训练时在线投影，不预生成六路 `1600x900` 稠密缓存（该格式
+  对 28,130 帧约需 486 GB）。`CustomPointToMultiViewDepth` 使用当前帧加 4 个
+  已对齐 sweep，在 `ImageAug3D` 后投影成六路 `256x704` 稀疏深度图；GT 与 LSS
+  的深度范围统一为 `[1,60,0.5]`，不再沿用 Map-only 的 35 m 截断。
+- 4090_8 为 2 socket x 45 core x 2 thread（90 物理核/180 逻辑线程），内存
+  708 GiB、`/dev/shm` 355 GiB。NuScenes 单联合 loader 配置为每卡 10 个
+  persistent worker，8 卡共 80 个 worker；加 8 个训练主进程接近物理核数。
+  OMP/MKL 均限制为单线程，避免按 180 个 SMT 线程盲目增加 worker。
 
 ## Current decisions
 
