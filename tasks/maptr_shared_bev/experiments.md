@@ -173,6 +173,11 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `[-1.82,-1.76,-1.66,-1.77,-1.69,-1.71,-1.71,-1.68,-1.59,-1.78]`，不再由
   全局 `[-5,3]` 产生统一 Z=-1 anchor。生成结果已验证为
   `[1,180,180,10 sizes,2 rotations,7]`。
+- 首次训练在 epoch 2 进入分任务评估时失败：MMCV 配置继承把 common 的单验证集
+  `type/data_root/...` 与新增的 `map/object` 合并到同一 `data.val`。已在提交
+  `4d17f5b` 对 `data.train/val/test` 使用 `_delete_=True` 完整覆盖；解析验证确认
+  `data.val` 只含 `map/object`，并能生成两个 task eval spec。修复后的从头训练
+  输出目录改为 `joint_6layer_gn_map_x30_y15_24e_bs4_w4_v2`，旧失败目录保留。
 
 ## Current decisions
 
