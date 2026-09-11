@@ -198,6 +198,17 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   LiDAR/BEVFusion 仍接收 keyframe + 4 sweeps，只有 MapTRv2 稀疏深度标签严格
   使用 keyframe。独立目录为
   `joint_6layer_gn_map_x30_y15_keyframe_depth_24e_bs1_acc4_w1_v5`。
+- 最终首轮公开集基线在提交 `36bf85c` 选择全链路单帧 LiDAR：train/test pipeline
+  均移除 `LoadPointsFromMultiSweeps`，在线稀疏 `gt_depth` 和 LiDAR encoder 都只
+  使用 keyframe。这不再对齐 BEVFusion OD 的多 sweep 协议，但与原版 MapTRv2
+  的深度标签来源一致，并显著减少 sweep I/O、CPU 变换、GPU 深度投影和
+  voxelization。其余保持 bs1 x 8 ranks x acc4 = global batch 32、每卡 1 worker、
+  24 epoch/每 2 epoch 双任务评估；独立目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w1_v6`。
+  启动脚本提交 `8ac9dd6` 进一步固定所有 BLAS/OpenMP 库为单线程，设置
+  `OMP_WAIT_POLICY=PASSIVE`、`KMP_AFFINITY=disabled`、`KMP_BLOCKTIME=0` 和
+  `OPENCV_FOR_THREADS_NUM=1`，防止 8 个 loader worker 各自扩张为整机线程池；
+  这些设置只限制 CPU 并发，不改变训练样本、loss 或有效 batch。
 
 ## Current decisions
 
