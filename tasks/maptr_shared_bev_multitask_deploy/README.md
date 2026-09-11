@@ -62,9 +62,11 @@ checkpoint/config shapes instead of copying geometry from an older engine.
 - [ ] Rebuild the validated ONNX graphs in the final target GPU/TensorRT
   environment.
 - [ ] Validate TensorRT outputs against ONNX/PyTorch.
-- [ ] Integrate the shared runtime and both postprocessing/output paths into
+- [x] Implement the shared runtime and both postprocessing/output paths as the
+  independent `dl_bevfusion_mapod` module on
   `release-test-mapod-share-model-5.7`.
-- [ ] Update and validate `79-perception.yaml` for the new model contract.
+- [x] Add a non-default `dl_bevfusion_mapod` profile and pipeline to
+  `79-perception.yaml`; YAML structure and fixed model dimensions validated.
 - [ ] Build, replay, and verify both OD and Map outputs together.
 
 ## Verified export contract (2026-09-10)
@@ -181,11 +183,13 @@ For every exported graph:
 
 ### 4. Integrate into `perception_q` 5.7
 
-1. Use `release-test-mapod-share-model-5.7/src/dl_runtime/dl_bevfusion` as the
-   target integration point.
-2. Reuse verified infrastructure from the 5.6 `dl_bevfusion` and
-   `dl_bevfusion_maptr` implementations, but port only contracts compatible
-   with the selected shared model.
+1. Implement the deployment as the independent module
+   `src/dl_runtime/dl_bevfusion_mapod`; do not add the Map head inside the
+   existing `dl_bevfusion` module and do not call the standalone
+   `dl_bevfusion_maptr` module.
+2. Use the 5.6 `dl_bevfusion` and `dl_bevfusion_maptr` implementations only as
+   read-only references. The new module owns its runtime namespace, TensorRT
+   wrapper, camera/LiDAR/fusion path, both heads, algorithm class and output.
 3. Initialize plugins before deserializing dependent engines.
 4. Run camera/LiDAR preprocessing and shared BEV computation once, then route
    the shared result to both task heads.
@@ -230,3 +234,34 @@ Acceptance checks:
   credentials or other large/private artifacts to `agent-workspace`.
 - Record hashes, contracts, commands and concise validation results here as each
   milestone is completed.
+
+## Runtime implementation status (2026-09-11)
+
+The runtime target branch now contains the independent module
+`dl_bevfusion_mapod`. Its core loads the six exported model components from a
+single MapOD model directory, loads `libmaptr_plugins.so` before deserializing
+the Map engine, computes one shared `middle` tensor, and feeds that exact
+pointer to the OD and Map heads. It publishes the original ordered Map decoder
+points through `mapod_pointcloud` while preserving the existing OD object path.
+
+The existing `src/dl_runtime/dl_bevfusion` and all of its files remain
+unchanged. To avoid header and dynamic-symbol collisions when both old and new
+libraries are linked into `lidar_obj_det`, the new copy uses the dedicated
+namespaces `bevfusion_mapod`, `mapod_nv`, `mapod_nvtype`, and
+`MapODTensorRT`, plus MapOD-specific header guards/macros.
+
+Static checks completed:
+
+- `git diff --check` passes in the runtime and profile repositories;
+- the Map head and complete MapOD core pass `g++ -std=c++17 -Wall -Werror
+  -fsyntax-only` against CUDA/TensorRT headers;
+- a translation unit including both old and new `bevfusion.hpp` headers passes
+  with `-Werror`, confirming the public core headers do not collide;
+- `79-perception.yaml` parses successfully and validates four cameras, seven
+  Map classes and twenty OD anchors for ten OD classes.
+
+Full project configuration is not available in this local shell because the
+installed environment does not provide `baizeConfig.cmake`. Per user decision,
+this milestone does not include data replay or numerical output validation.
+The new profile pipeline remains non-default until target-Orin engines and the
+four-camera calibration/preprocessing contract are validated.
