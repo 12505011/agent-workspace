@@ -157,10 +157,12 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `6e-5`、Map head `2e-4`，OD/Map/depth=`1/0.12/0.04`；24 epoch，每 2 epoch
   分任务评估并保存 checkpoint。这是受控起点，不是已验证的最优 nuScenes
   loss 权重。
-- 深度监督最终采用训练时在线投影，不预生成六路 `1600x900` 稠密缓存（该格式
-  对 28,130 帧约需 486 GB）。`CustomPointToMultiViewDepth` 使用当前帧加 4 个
-  已对齐 sweep，在 `ImageAug3D` 后投影成六路 `256x704` 稀疏深度图；GT 与 LSS
-  的深度范围统一为 `[1,60,0.5]`，不再沿用 Map-only 的 35 m 截断。
+- 深度监督采用训练时在线投影，不预生成六路 `1600x900` 稠密缓存（该格式对
+  28,130 帧约需 486 GB）。原版 MapTRv2 只用 keyframe LiDAR 生成稀疏
+  `gt_depth`，原版 BEVFusion 则用 keyframe + 4 sweeps 作为 LiDAR/稀疏深度输入；
+  提交 `fa3e241` 将 pipeline 对齐为 `ImageAug3D -> keyframe gt_depth -> load 4
+  sweeps`，避免把历史动态点写入监督标签。GT 与 LSS 深度范围统一为
+  `[1,60,0.5]`，不再沿用 Map-only 的 35 m 截断。
 - 4090_8 为 2 socket x 45 core x 2 thread（90 物理核/180 逻辑线程），内存
   708 GiB、`/dev/shm` 355 GiB。NuScenes 单联合 loader 配置为每卡 10 个
   persistent worker，8 卡共 80 个 worker；加 8 个训练主进程接近物理核数。
@@ -190,6 +192,12 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   OpenBLAS/NumExpr/BLIS/VecLib 单线程；warmup micro-iterations 调为 4000以保持
   2000 optimizer steps。干净重训目录为
   `joint_6layer_gn_map_x30_y15_24e_bs2_acc2_w4_v4`。
+- 方法对齐后的 `_v5` 进一步改为每卡 bs1、每卡 1 worker、
+  `cumulative_iters=4`，有效 global batch 仍为 32；warmup 为 8000 个
+  micro-iterations，即 2000 次 optimizer update。该资源调整不删除 sweeps：
+  LiDAR/BEVFusion 仍接收 keyframe + 4 sweeps，只有 MapTRv2 稀疏深度标签严格
+  使用 keyframe。独立目录为
+  `joint_6layer_gn_map_x30_y15_keyframe_depth_24e_bs1_acc4_w1_v5`。
 
 ## Current decisions
 
