@@ -165,6 +165,14 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   708 GiB、`/dev/shm` 355 GiB。NuScenes 单联合 loader 配置为每卡 10 个
   persistent worker，8 卡共 80 个 worker；加 8 个训练主进程接近物理核数。
   OMP/MKL 均限制为单线程，避免按 180 个 SMT 线程盲目增加 worker。
+- OD anchor 已按这份 train PKL 的真实分布审计（官方类别映射、valid flag、
+  中心在 +/-54 m）：现有 10 类 `[width,length,height]` 模板整体接近真实均值，
+  保持不变。修复了更关键的 Z 语义：官方 PKL 存 gravity-centre Z，dataset 必须
+  `db_flag=True` 才会转成内部 bottom-centre；旧配置误走 Westwell bottom-origin
+  分支。各类 anchor bottom Z 使用训练集均值，依次为
+  `[-1.82,-1.76,-1.66,-1.77,-1.69,-1.71,-1.71,-1.68,-1.59,-1.78]`，不再由
+  全局 `[-5,3]` 产生统一 Z=-1 anchor。生成结果已验证为
+  `[1,180,180,10 sizes,2 rotations,7]`。
 
 ## Current decisions
 
