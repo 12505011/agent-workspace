@@ -240,9 +240,10 @@ Acceptance checks:
 The runtime target branch now contains the independent module
 `dl_bevfusion_mapod`. Its core loads the six exported model components from a
 single MapOD model directory, loads `libmaptr_plugins.so` before deserializing
-the Map engine, computes one shared `middle` tensor, and feeds that exact
-pointer to the OD and Map heads. It publishes the original ordered Map decoder
-points through `mapod_pointcloud` while preserving the existing OD object path.
+the Map engine, runs the four-camera backbone once, then gathers and pools the
+task-specific three-camera routes before applying the shared fuser/decoder
+weights. It publishes the original ordered Map decoder points through
+`mapod_pointcloud` while preserving the existing OD object path.
 
 The existing `src/dl_runtime/dl_bevfusion` and all of its files remain
 unchanged. To avoid header and dynamic-symbol collisions when both old and new
@@ -250,7 +251,13 @@ libraries are linked into `lidar_obj_det`, the new copy uses the dedicated
 namespaces `bevfusion_mapod`, `mapod_nv`, `mapod_nvtype`, and
 `MapODTensorRT`, plus MapOD-specific header guards/macros.
 
-Static checks completed:
+The follow-up fixes align runtime preprocessing, image augmentation matrices,
+OD anchors/decoding, class-wise multiclass NMS, engine binding validation and
+failure propagation with the selected training contract. OD sorting uses a
+persistent CUB workspace rather than allocating temporary storage per frame.
+The engine build script now verifies source provenance before reusing a plan.
+
+Code/build checks completed before the user requested no further testing:
 
 - `git diff --check` passes in the runtime and profile repositories;
 - the Map head and complete MapOD core pass `g++ -std=c++17 -Wall -Werror
@@ -260,8 +267,19 @@ Static checks completed:
 - `79-perception.yaml` parses successfully and validates four cameras, seven
   Map classes and twenty OD anchors for ten OD classes.
 
-Full project configuration is not available in this local shell because the
-installed environment does not provide `baizeConfig.cmake`. Per user decision,
-this milestone does not include data replay or numerical output validation.
-The new profile pipeline remains non-default until target-Orin engines and the
-four-camera calibration/preprocessing contract are validated.
+- container build of `bevfusion_mapod_core` and the final `lidar_obj_det`
+  target completed successfully.
+
+Per user decision, this milestone does not include data replay or numerical
+output validation. The new profile pipeline remains non-default until
+target-Orin engines and end-to-end outputs are validated.
+
+## Review correction (2026-09-11)
+
+The follow-up [code review](REVIEW_2026-09-11.md) found an upper-level
+compilation failure, mismatched image/projection transforms and OD anchors,
+unsafe OD output allocation/counting, and different NMS semantics. Those code
+findings were resolved in runtime commit `0d7a31041`, profile commit
+`8c3b21a5d`, and export/build commit `f72fb84`. This is implementation
+completion, not deployment acceptance: numerical parity and replay remain
+explicitly deferred.
