@@ -183,6 +183,13 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   和 can-bus MLP，并非 OD/Map/depth 主损失断链。实验配置曾错误覆盖 common 的
   `find_unused_parameters=True`；提交 `5bc4ba0` 已恢复为 True。干净重训目录为
   `joint_6layer_gn_map_x30_y15_24e_bs4_w4_v3`。
+- `_v3` 的 bs4、六相机、118 depth bins 在 24 GiB GPU 上接近占满显存，同时
+  每卡 10 workers（总计 80）引发 load 700+ 的进程/线程风暴并留下 CUDA ghost
+  contexts，最终通过重启 4090_8 清理。提交 `31d5c42` 将训练改为每卡 bs2、
+  `cumulative_iters=2`（有效 global batch 仍为 32）、每卡 4 workers，并限制
+  OpenBLAS/NumExpr/BLIS/VecLib 单线程；warmup micro-iterations 调为 4000以保持
+  2000 optimizer steps。干净重训目录为
+  `joint_6layer_gn_map_x30_y15_24e_bs2_acc2_w4_v4`。
 
 ## Current decisions
 
