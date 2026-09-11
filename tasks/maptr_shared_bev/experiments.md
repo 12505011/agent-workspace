@@ -226,6 +226,15 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   样本约 3.48 GB/3.24 GiB；按 8 bytes/点对齐约 4.63 GB/4.32 GiB，计入索引、
   manifest、小文件和文件系统开销后建议为 train 预留 5--7 GiB。现有 uint16
   六路稠密 `.npy` 则约 453 GiB，不能直接用于该规模缓存。
+- `_v8`（未训练）在 `_v7` 基础上调整两项：Map 类别由标准三类扩展为四类
+  `divider/ped_crossing/boundary/centerline`（centerline 在官方 PKL 中非空，
+  train 177,448 条、val 36,772 条），train dataset 开 `filter_empty_gt=True`
+  以跳过 `[-30,-15,-2,30,15,2]` 范围内地图 GT 全空的样本（train 127 帧、
+  约 0.45%）。同时 `samples_per_gpu` 改回 4、`workers_per_gpu` 改回 4；
+  `find_unused_parameters=True`、`cumulative_iters=4`、单帧 keyframe LiDAR
+  保持不变。独立目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs4_w4_v8`。尚未启动训练。
+
 
 ## Current decisions
 
