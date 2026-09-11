@@ -143,6 +143,16 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   同时包含 `gt_boxes` 与离线 `annotation`，metadata 中 Map range 必须与配置
   完全一致。启动脚本会在占用 GPU 前验证 train/val PKL、六路相机、联合 GT
   字段和 ResNet checkpoint。
+- 2026-09-11 已核验实际 PKL：`data/nuscenes/westwell_nusc_x_neg30_30_y_neg15_15_map_infos_temporal_{train,val}.pkl`，
+  train/val 分别为 28,130/6,019 帧且 token 交集为 0；每帧都有 `gt_boxes`、
+  `gt_names`、离线 `annotation` 和 6 路相机。转换器把官方相机规范化为
+  `CAM_FRONT_LEFT/CAM_FRONT_MID/CAM_FRONT_RIGHT/CAM_REAR_RIGHT/CAM_REAR_MID/CAM_REAR_LEFT`，
+  因此训练与验证 pipeline 均须使用这些键，不能继承含 `CAM_FRONT/CAM_BACK`
+  的 common test pipeline。metadata Map range 已核验为
+  `[-30,-15,-2,30,15,2]`。
+- PKL 中 `centerline` 非空（train 177,448 条、val 36,772 条），但首个官方
+  MapTR 可比基线仍只训练/评估标准三类；`centerline` 留待独立 4 类实验，避免
+  改变官方指标口径。`stop_line/bar_markings/bar_markings_curve` 在这批数据中为空。
 - 第一版保持 G 分组 LR与外层 loss scale：base `1e-4`、camera backbone
   `6e-5`、Map head `2e-4`，OD/Map/depth=`1/0.12/0.04`；24 epoch，每 2 epoch
   分任务评估并保存 checkpoint。这是受控起点，不是已验证的最优 nuScenes

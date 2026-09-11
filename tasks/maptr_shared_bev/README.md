@@ -307,7 +307,9 @@ OD:Map 更新频率 16:1 的 one-stage G 是当前最好的联合 Pareto 方案�
   `bev_3dod_maptr_shared_bev_nuscenes` 配置完成：OD 保持 +/-54 m，Map range 为
   `[-30,-15,-2,30,15,2]`，MapTR decoder 6 层，六路相机、10 类 OD anchors、
   3 类官方 Map、shared decoder GN。官方数据同帧联合训练，不使用 16:1
-  alternating runner；详见 `experiments.md` 的 official nuScenes 条目。
+  alternating runner；已核验实际 PKL 为 28,130 train / 6,019 val、无 token
+  重叠，配置已对齐转换后的 `*_MID/*_REAR` 相机键；详见 `experiments.md` 的
+  official nuScenes 条目。
 - 四相机部署的实际源相机名称、逻辑槽位和固定顺序尚待确认。
 - 四相机 engine 落地时需清除 C++ runtime 示例中的 `num_camera=5` 硬编码。
 - decoder-GN 长训练需继续每 2 epoch 用独立 OD/Map 验证集评估；重点观察
