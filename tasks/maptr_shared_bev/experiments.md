@@ -178,6 +178,11 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `4d17f5b` 对 `data.train/val/test` 使用 `_delete_=True` 完整覆盖；解析验证确认
   `data.val` 只含 `map/object`，并能生成两个 task eval spec。修复后的从头训练
   输出目录改为 `joint_6layer_gn_map_x30_y15_24e_bs4_w4_v2`，旧失败目录保留。
+- `_v2` 在第二个 iteration 触发 DDP unfinished reduction。报错参数已映射为
+  shared-BEV 路径按设计绕过的 MapTR legacy BEV positional/camera/level embedding
+  和 can-bus MLP，并非 OD/Map/depth 主损失断链。实验配置曾错误覆盖 common 的
+  `find_unused_parameters=True`；提交 `5bc4ba0` 已恢复为 True。干净重训目录为
+  `joint_6layer_gn_map_x30_y15_24e_bs4_w4_v3`。
 
 ## Current decisions
 
