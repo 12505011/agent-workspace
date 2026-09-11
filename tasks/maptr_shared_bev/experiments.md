@@ -216,7 +216,10 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   与旧 PyTorch/Intel OpenMP worker 环境冲突。提交中的 `_v7` 将该实验设为
   `workers_per_gpu=0`，由 8 个 rank 主进程各自加载数据，继续保持各 CPU 库
   单线程；有效 batch、数据、模型和 loss 均不变。独立目录为
-  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w0_v7`。
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w0_v7`。4090_8 上用同一
+  config/conda/OMP 环境完成真实 `build_dataset -> build_dataloader -> next(iter)`
+  smoke check，首个 batch 成功且同时含 image/points/OD GT/Map GT/gt_depth；说明
+  原先 worker-init 崩溃边界已绕开，尚未由 agent 启动完整训练。
 - 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
   `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
   `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
