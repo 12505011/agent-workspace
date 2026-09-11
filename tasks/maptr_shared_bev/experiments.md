@@ -209,6 +209,20 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `OMP_WAIT_POLICY=PASSIVE`、`KMP_AFFINITY=disabled`、`KMP_BLOCKTIME=0` 和
   `OPENCV_FOR_THREADS_NUM=1`，防止 8 个 loader worker 各自扩张为整机线程池；
   这些设置只限制 CPU 并发，不改变训练样本、loss 或有效 batch。
+- `_v6` 在模型构建、CUDA 搬移、DDP/optimizer/runner 初始化全部成功后，于首个
+  DataLoader worker 启动阶段 `SIGABRT`；此前终端的首个错误为 Intel OpenMP
+  `kmp_affinity.cpp(4313)`，所以后续 torchrun/distributed 退出不是 NCCL 根因。
+  当前训练代码会在 worker init 把 affinity 恢复到宿主全部 180 个逻辑 CPU，
+  与旧 PyTorch/Intel OpenMP worker 环境冲突。提交中的 `_v7` 将该实验设为
+  `workers_per_gpu=0`，由 8 个 rank 主进程各自加载数据，继续保持各 CPU 库
+  单线程；有效 batch、数据、模型和 loss 均不变。独立目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w0_v7`。
+- 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
+  `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
+  `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
+  样本约 3.48 GB/3.24 GiB；按 8 bytes/点对齐约 4.63 GB/4.32 GiB，计入索引、
+  manifest、小文件和文件系统开销后建议为 train 预留 5--7 GiB。现有 uint16
+  六路稠密 `.npy` 则约 453 GiB，不能直接用于该规模缓存。
 
 ## Current decisions
 
