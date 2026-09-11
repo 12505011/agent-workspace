@@ -124,6 +124,30 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
 - 优化器为 AdamW，基础 LR `1e-4`，500 iter linear warmup，之后单调 cosine，
   `min_lr_ratio=0.01`。
 
+## Official nuScenes joint baseline (2026-09-11)
+
+- MapTR repo branch: `bev_3dod_maptr_shared_bev_nuscenes`。训练入口配置为
+  `configs/maptrv2/nuscenes/bevfusion_maptr_shared_bev_nuscenes_joint_6layer_gn_24e.py`。
+- 保留 G/GN 的 camera+LiDAR shared-BEV 架构，只在共享 SECOND/SECONDFPN 使用
+  GN32；MapTR decoder 恢复为 6 层。配置解析和 CPU 模型构建已验证：6 个
+  decoder layer、3 类 Map head、共享 trunk 14 个 GN/0 个 BN。
+- OD 继续使用 `[-54,-54,-5,54,54,3]` 和官方 10 类；anchor 按类一一对应，
+  尺寸顺序是仓库要求的 `[width,length,height]`。Map 独立使用
+  `[-30,-15,-2,30,15,2]`，0.6 m shared-BEV crop 对应 MapTR `H=50,W=100`；
+  dummy `180x180 -> 50x100` crop 已验证。
+- 官方 nuScenes 的 OD/Map 同帧，因此 `alternating_train=False`：每个 batch
+  同时计算 OD、Map 和 depth，一次 forward、一次 backward、一次 optimizer
+  update，不再使用 Westwell 16:1 双 loader。使用全部 6 路官方相机和官方
+  MapTR 三类 `divider/ped_crossing/boundary`。
+- PKL 必须由 `westwell_joint_converter.py` 按官方 train/val scene split生成，
+  同时包含 `gt_boxes` 与离线 `annotation`，metadata 中 Map range 必须与配置
+  完全一致。启动脚本会在占用 GPU 前验证 train/val PKL、六路相机、联合 GT
+  字段和 ResNet checkpoint。
+- 第一版保持 G 分组 LR与外层 loss scale：base `1e-4`、camera backbone
+  `6e-5`、Map head `2e-4`，OD/Map/depth=`1/0.12/0.04`；24 epoch，每 2 epoch
+  分任务评估并保存 checkpoint。这是受控起点，不是已验证的最优 nuScenes
+  loss 权重。
+
 ## Current decisions
 
 - 2026-09-09 decoder-GN G24 已从同目录 `epoch_2.pth` 配置为真正的
