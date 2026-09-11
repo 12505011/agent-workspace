@@ -74,6 +74,41 @@ Map-only epoch 22 日志做六类重聚合，结果约为 0.5973；这只是统�
 | Stage2 E | joint Stage1 初始化，分组 LR，OD 5 cam / Map 3 cam | epoch 2: OD 0.4700 / 0.4912，Map 0.4383 | joint 初始化能保留 Map，但 OD 上限仍低 |
 | One-stage G | 从头端到端，OD:Map 更新 16:1，cosine，4 epoch | epoch 4: OD 0.5651 / 0.5791，Map 0.4445 | 当前最好的联合 Pareto 方案，两个任务从 e1 到 e4 均持续上升 |
 
+## Decoder-GN G24 versus historical Map-only (2026-09-11)
+
+同为七类 Map 主指标时，decoder-GN 联合实验的最佳 Map 为 epoch 16 的
+`0.5852`，随后 epoch 18/20/22 分别降至 `0.5388/0.5170/0.5080`；对应 OD
+mAP 在 epoch 20 达到 `0.6174`。历史 Map-only 在 epoch 22 达到 `0.6456`。
+因此联合最佳相对 Map-only 低 0.0604，而不是拿末轮 0.5080 得出的 0.1376；
+联合模型应按双任务 Pareto checkpoint 选择，不能默认取最后一轮。
+
+两者 MapTR head 都是四层 decoder、40 vectors、每条 15 点、七类和相同的
+cls/pts/dir/seg loss，但其余训练合同并不相同：
+
+- Map-only 是 camera-only，Map head 内的 `LSSTransform` 直接产生 256-channel
+  `17x46` BEV；联合模型先用外部 `DepthLSSTransform`，再与 LiDAR 融合并通过
+  shared SECOND/SECONDFPN，Map head 接收裁剪后的 512-channel `34x90` BEV。
+- Map-only 中央相机为 `CAM_FRONT_MID` 且使用 stretch；联合 Map 中央相机为
+  `CAM_FRONT_TOP_MID` 且使用 528-pixel letterbox，并带轻量旋转/垂直平移增强。
+  两者数据根目录与前向范围也分别为 Jinke x0--55 和 shared Map x0--54，验证
+  GT 数量接近但并非完全一致。
+- Map-only base/Map-head LR 为 `6e-4`，camera backbone 为 `6e-5`；联合模型
+  camera backbone 同为 `6e-5`，但 Map head 为 `2e-4`，camera neck、DepthLSS、
+  fuser 和 shared decoder 为 `1e-4`。联合 cosine 按全部 OD+Map global steps
+  前进，而不是按 Map update 单独前进。
+- Map-only 的 vectormap 外层 scale 为 1，depth 默认外层 scale 也是 1，内部
+  depth 权重为 3；联合为 vectormap `0.12`、depth `0.04`，内部仍为 3。因此
+  联合把 raw depth 相对 Map-head 的比例从约 3:1 改成约 1:1，并没有保持
+  Map-only 的内部相对权重。
+- Map-only loader 每 epoch 132 step；联合每 object-defined epoch 执行 362 个
+  Map step。因此联合每个名义 epoch 约等于 2.75 个 Map 数据 epoch，epoch 8
+  已约等于 Map-only 22 epoch 的 Map update 数，24 epoch 总计约 66 个 Map
+  数据 epoch。epoch 16 后退化不能解释为 Map 更新次数不足。
+
+该对比说明 decoder GN 消除了早期 0.1x 级崩坏，但剩余差距同时包含不同输入
+表征/相机与数据、共享梯度冲突、Map-private LR 较低、depth 相对配比改变和后期
+重复训练；不能把它单独归因于 Map 数据少或某一个 loss 权重。
+
 ## One-stage G update semantics
 
 - `object_steps_per_map=16` 表示 16 次独立 OD 参数更新后做 1 次独立 Map 参数
