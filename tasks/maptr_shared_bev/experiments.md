@@ -238,8 +238,9 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
 - 提交 `60782ee` 正式固定 6-layer decoder 和四类 Map head/coder，并保持
   `filter_empty_gt=False`。原因是该仓库 `Custom3DDataset` 的空 GT 过滤依据 OD
   `gt_labels_3d`，开启它会误丢弃 OD 为空但仍有有效 Map GT 的联合样本。配置内
-  默认 `work_dir` 也已与 v10 启动脚本统一；本地已解析验证，服务器同步因当时
-  SSH 端口连接超时尚待复核。
+  默认 `work_dir` 也已与 v10 启动脚本统一；本地与 4090_8 均已解析验证，远端
+  配置确认 decoder=6、head/coder=4 类、workers=4、accumulation=4、LSS
+  0.3m/downsample=2。
 - 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
   `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
   `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
