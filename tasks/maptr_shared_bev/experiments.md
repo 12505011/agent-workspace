@@ -245,6 +245,13 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   8000 micro-iterations 恢复为 2000 iterations；新目录为
   `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs4_w4_v11`。本地有效配置
   已验证并同步至 4090_8。
+- v11 每卡 batch 4 在六相机双头下占满 8 张 24 GiB GPU，并遗留大量 PPID=1
+  worker；已按精确 v11 命令行清理，复核每卡约 2 MiB、残留进程为 0。最终
+  提交 `2f2a9f6` 改为每卡 batch 2、累计 2 次、8 卡有效全局 batch 32，warmup
+  4000 micro-iterations（约 2000 optimizer updates），保持
+  `filter_empty_gt=False`；新目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v13`，已同步并
+  在 4090_8 解析验证。
 - 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
   LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
   Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
