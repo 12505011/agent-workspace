@@ -254,6 +254,13 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `filter_empty_gt=True`；v13 因空 Map GT 断言失败，最终训练目录为
   `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v14`，已同步并
   在 4090_8 解析验证；失败进程清理后 8 卡均约 2 MiB。
+- v14 已完成 epoch 2 训练并先保存 `epoch_2.pth`，随后 Map 自动评估在离线 GT
+  格式化阶段失败：`_format_gt()` 只需要矢量 GT，传入空 example，但
+  `gen_vectorized_samples()` 在 `pv_seg=True` 时无条件访问 `img_metas`。提交
+  `c3c641f` 修复为仅在 example 含
+  `img_metas` 时生成 PV mask；训练时 PV supervision 不变，离线评估仍生成矢量
+  和 BEV mask。最小复现验证通过，修复已同步 4090_8，启动脚本已配置从 v14
+  `epoch_2.pth` 续训；残留 GPU rank 已清理，8 卡均约 2 MiB。
 - 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
   LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
   Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
