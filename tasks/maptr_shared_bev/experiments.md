@@ -261,6 +261,15 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `img_metas` 时生成 PV mask；训练时 PV supervision 不变，离线评估仍生成矢量
   和 BEV mask。最小复现验证通过，修复已同步 4090_8，启动脚本已配置从 v14
   `epoch_2.pth` 续训；残留 GPU rank 已清理，8 卡均约 2 MiB。
+- 同一 v14 日志中 OD `loss_bbox/loss_dir` 持续为 0。真实 PKL 与 dataset API
+  审计确认根因：PKL 保存 `vehicle.car` 等原始 nuScenes 名称，而
+  `NuScenesDataset.get_ann_info()` 在 `db_flag=True` 时跳过 `NameMapping`，前
+  1000 帧得到 0 个有效标签和 28,992 个 `-1`。GT 尺寸与 anchors、bottom-Z
+  均匹配，不是 anchor 模板问题。提交 `246ca84` 将类别映射与 box-origin 处理
+  解耦：所有模式先映射类别，同时继续用 `db_flag=True` 正确解释 gravity-center
+  Z。服务器真实验证前 1000 帧得到 28,503 个有效 GT、10 类均非空，仅 489 个
+  非目标类为 `-1`。由于 v14 前两轮 OD 未获得回归监督，最终从头训练目录切为
+  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v15`，不续训。
 - 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
   LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
   Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
