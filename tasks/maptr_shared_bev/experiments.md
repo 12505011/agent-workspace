@@ -227,6 +227,13 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `workers_per_gpu=4`，其余 OMP/BLAS 单线程限制保留；独立目录为
   `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w4_v9`。用户并发加入的
   `centerline` 与 `filter_empty_gt=True` 未纳入该提交，但同步服务器时予以保留。
+- 配置审计发现 nuScenes child 未覆盖 common 早期默认的 Camera LSS
+  `x/y step=0.6m`，而 `DepthLSSTransform.downsample=2` 会令融合前 camera BEV
+  变为 1.2m；Westwell 实际训练配置则显式使用 0.3m，downsample 后为与 LiDAR
+  对齐的 0.6m。提交 `2096cf8` 已在 nuScenes child 恢复 LSS x/y step=0.3m，
+  保持 Map/shared grid=0.6m；4090_8 解析验证为 360x360 -> 180x180、4 workers、
+  6-layer decoder。新目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs1_acc4_w4_v10`。
 - 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
   `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
   `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
