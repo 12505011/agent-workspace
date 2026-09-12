@@ -226,8 +226,9 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `kmp_affinity.cpp(4313)` SIGABRT；只取消该变量、其余环境与数据不变时，
   4-worker 成功读取真实联合 batch。因此提交 `3877ba7` 删除该 export、恢复
   `workers_per_gpu=4`，其余 OMP/BLAS 单线程限制保留；独立目录为
-  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w4_v9`。用户并发加入的
-  `centerline` 与 `filter_empty_gt=True` 未纳入该提交，但同步服务器时予以保留。
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w4_v9`。后续四类
+  `centerline` 设置纳入正式配置，但 `filter_empty_gt` 经联合数据语义审计后保持
+  为 `False`。
 - 配置审计发现 nuScenes child 未覆盖 common 早期默认的 Camera LSS
   `x/y step=0.6m`，而 `DepthLSSTransform.downsample=2` 会令融合前 camera BEV
   变为 1.2m；Westwell 实际训练配置则显式使用 0.3m，downsample 后为与 LiDAR
@@ -241,6 +242,15 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   默认 `work_dir` 也已与 v10 启动脚本统一；本地与 4090_8 均已解析验证，远端
   配置确认 decoder=6、head/coder=4 类、workers=4、accumulation=4、LSS
   0.3m/downsample=2。
+- 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
+  LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
+  Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
+  有意差异包括 Map decoder 4->6、Map 7->4 类、Map range/grid
+  `[0,-10,54,10]/34x90 -> [-30,-15,30,15]/50x100`、Westwell 5/3 相机双数据源
+  16:1 交替训练改为官方六相机同帧联合训练、Westwell 10 类及 anchors 改为
+  nuScenes 10 类及 anchors、LiDAR 特征 4->5 维、Z 范围 `[-1,7] -> [-5,3]`，
+  batch 4 改为 micro-batch 1 + 累计 4。历史 Westwell decoder 实际为 4 层；
+  当前源码 common 已改为 6 层，不能用当前继承展开结果代替历史保存配置比较。
 - 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
   `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
   `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
