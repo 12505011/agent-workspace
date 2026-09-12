@@ -220,6 +220,13 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   config/conda/OMP 环境完成真实 `build_dataset -> build_dataloader -> next(iter)`
   smoke check，首个 batch 成功且同时含 image/points/OD GT/Map GT/gt_depth；说明
   原先 worker-init 崩溃边界已绕开，尚未由 agent 启动完整训练。
+- 后续针对 4-worker 做同机最小复现，确认真正触发条件是启动脚本中的
+  `KMP_AFFINITY=disabled`：保留该变量时 4/4 workers 均在
+  `kmp_affinity.cpp(4313)` SIGABRT；只取消该变量、其余环境与数据不变时，
+  4-worker 成功读取真实联合 batch。因此提交 `3877ba7` 删除该 export、恢复
+  `workers_per_gpu=4`，其余 OMP/BLAS 单线程限制保留；独立目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w4_v9`。用户并发加入的
+  `centerline` 与 `filter_empty_gt=True` 未纳入该提交，但同步服务器时予以保留。
 - 真实抽查 9 个官方 nuScenes keyframe：每帧 LiDAR 约 34.7k 点，投影到六路
   `1600x900` 后非零深度像素为 17,123--23,171，均值 20,595。若缓存为紧凑
   `(flattened_pixel:uint32, depth_mm:uint16)`（6 bytes/点），28,130 个 train
