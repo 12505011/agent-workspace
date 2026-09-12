@@ -227,8 +227,7 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   4-worker 成功读取真实联合 batch。因此提交 `3877ba7` 删除该 export、恢复
   `workers_per_gpu=4`，其余 OMP/BLAS 单线程限制保留；独立目录为
   `joint_6layer_gn_map_x30_y15_single_frame_24e_bs1_acc4_w4_v9`。后续四类
-  `centerline` 设置纳入正式配置，但 `filter_empty_gt` 经联合数据语义审计后保持
-  为 `False`。
+  `centerline` 设置纳入正式配置；空 GT 策略的最终结论见下方实跑记录。
 - 配置审计发现 nuScenes child 未覆盖 common 早期默认的 Camera LSS
   `x/y step=0.6m`，而 `DepthLSSTransform.downsample=2` 会令融合前 camera BEV
   变为 1.2m；Westwell 实际训练配置则显式使用 0.3m，downsample 后为与 LiDAR
@@ -239,9 +238,12 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
 - 提交 `60782ee` 正式固定 6-layer decoder 和四类 Map head/coder。后续复核确认
   当前实际数据集 `CustomNuScenesOfflineLocalMapDataset.prepare_train_data()` 在
   `with_map_gt=True` 时优先按 `gt_map_labels_3d` 判空，而不是基类的 OD-only
-  判断。曾在提交 `3724531` 按四类 Map GT 开启该过滤，但最终提交 `a29de98`
-  恢复 `filter_empty_gt=False`，保留 Map 为空但可能仍有 OD GT 的联合样本。
-  batch 方案改为每卡 4、8 卡全局 batch 32、取消梯度累计，并将 warmup 从
+  判断。提交 `a29de98` 曾恢复 `filter_empty_gt=False` 以保留仍可能有 OD GT 的
+  Map 空帧，但实跑证明当前 MapTR loss 不接受空 `LiDARInstanceLines`，在
+  `.bbox` 访问处触发断言。因此最终提交 `f3f7d33` 恢复
+  `filter_empty_gt=True`；若未来要保留此类 OD 样本，需实现按样本 Map-valid
+  mask，而不能直接关闭过滤。batch 方案曾改为每卡 4、8 卡全局 batch 32、
+  取消梯度累计，并将 warmup 从
   8000 micro-iterations 恢复为 2000 iterations；新目录为
   `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs4_w4_v11`。本地有效配置
   已验证并同步至 4090_8。
@@ -249,9 +251,9 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   worker；已按精确 v11 命令行清理，复核每卡约 2 MiB、残留进程为 0。最终
   提交 `2f2a9f6` 改为每卡 batch 2、累计 2 次、8 卡有效全局 batch 32，warmup
   4000 micro-iterations（约 2000 optimizer updates），保持
-  `filter_empty_gt=False`；新目录为
-  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v13`，已同步并
-  在 4090_8 解析验证。
+  `filter_empty_gt=True`；v13 因空 Map GT 断言失败，最终训练目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v14`，已同步并
+  在 4090_8 解析验证；失败进程清理后 8 卡均约 2 MiB。
 - 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
   LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
   Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
