@@ -236,12 +236,15 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   保持 Map/shared grid=0.6m；4090_8 解析验证为 360x360 -> 180x180、4 workers、
   6-layer decoder。新目录为
   `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs1_acc4_w4_v10`。
-- 提交 `60782ee` 正式固定 6-layer decoder 和四类 Map head/coder，并保持
-  `filter_empty_gt=False`。原因是该仓库 `Custom3DDataset` 的空 GT 过滤依据 OD
-  `gt_labels_3d`，开启它会误丢弃 OD 为空但仍有有效 Map GT 的联合样本。配置内
-  默认 `work_dir` 也已与 v10 启动脚本统一；本地与 4090_8 均已解析验证，远端
-  配置确认 decoder=6、head/coder=4 类、workers=4、accumulation=4、LSS
-  0.3m/downsample=2。
+- 提交 `60782ee` 正式固定 6-layer decoder 和四类 Map head/coder。后续复核确认
+  当前实际数据集 `CustomNuScenesOfflineLocalMapDataset.prepare_train_data()` 在
+  `with_map_gt=True` 时优先按 `gt_map_labels_3d` 判空，而不是基类的 OD-only
+  判断。因此提交 `3724531` 按四类 Map GT 开启 `filter_empty_gt=True`；约 0.45%
+  的 Map 空帧会被整体过滤，即使其中可能仍有 OD GT。该提交同时改为每卡 batch
+  4、8 卡全局 batch 32、取消梯度累计，并将 warmup 从 8000 micro-iterations
+  恢复为 2000 iterations；新目录为
+  `joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs4_w4_v11`。本地有效配置
+  已验证；提交后的服务器同步因 SSH 端口超时尚待确认。
 - 与历史 Westwell decoder-GN 的实际保存配置逐项比对：Camera backbone/neck、
   LSS x/y/dbound/downsample、LiDAR voxel size、fuser、共享 SECOND/SECONDFPN-GN、
   Map `num_vec=40`/`num_pts_per_vec=15`、loss scale 和 AdamW 分组 LR 保持一致。
