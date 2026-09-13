@@ -295,6 +295,100 @@ cls/pts/dir/seg loss，但其余训练合同并不相同：
   `joint_6layer_gn_map_x30_y15_single_frame_24e_bs4_w4_v8`。尚未启动训练。
 
 
+## nuScenes v15 final result (2026-09-13)
+
+### Reproducible setup
+
+- Config：`configs/maptrv2/nuscenes/bevfusion_maptr_shared_bev_nuscenes_joint_6layer_gn_24e.py`。
+- Run：`work_dirs/shared_bev/nuscenes/joint_6layer_gn_map_x30_y15_single_frame_lss03_24e_bs2_acc2_w4_v15`。
+- 使用 nuScenes 官方同帧联合数据，28,130 train / 6,019 val；六相机、当前帧
+  LiDAR，不使用 sweeps。Map 范围为 `[-30,-15,-2,30,15,2]`。
+- 每卡 batch 2、8 卡、累计 2 次，有效全局 batch 32；6 层 Map decoder、4 个
+  Map 类别、共享 decoder 使用 GN。
+- Camera LSS XY 步长 0.3、downsample 2，进入共享 BEV 后等效 0.6 m；基础 LR
+  `1e-4`、camera backbone `6e-5`、Map head `2e-4`；外层
+  OD/Map/depth loss scale 为 `1/0.12/0.04`。warmup 4000 micro-iterations，
+  即 2000 optimizer updates；每 2 epoch 双任务评估。
+
+### Complete validation curve
+
+| Epoch | Map mAP | Map AP@0.5 | OD mAP | NDS |
+|---:|---:|---:|---:|---:|
+| 2 | 0.20975 | 0.08902 | 0.13001 | 0.15857 |
+| 4 | 0.33611 | 0.20039 | 0.22449 | 0.28520 |
+| 6 | 0.37156 | 0.22415 | 0.28889 | 0.33242 |
+| 8 | 0.42945 | 0.27310 | 0.32970 | 0.36627 |
+| 10 | 0.46212 | 0.31107 | 0.35824 | 0.38929 |
+| 12 | 0.48329 | 0.31761 | 0.36540 | 0.40135 |
+| 14 | 0.51575 | 0.34881 | 0.38414 | 0.41600 |
+| 16 | 0.53367 | 0.36378 | 0.39320 | 0.41926 |
+| 18 | 0.53923 | 0.36889 | 0.39779 | 0.42470 |
+| 20 | 0.54459 | 0.37191 | 0.40085 | 0.42849 |
+| **22** | **0.54975** | **0.37829** | **0.40254** | **0.42902** |
+| 24 | 0.54863 | 0.37713 | 0.40134 | 0.42862 |
+
+Map 与 OD 均在 epoch 22 最好，对应
+`best_map_NuscMap_chamfer_mAP_epoch_22.pth` 和
+`best_object_object_map_epoch_22.pth`。epoch 24 相对 epoch 22 的 Map mAP、
+OD mAP、NDS 仅下降 `0.00112/0.00120/0.00040`，结论是收敛平台而不是崩塌。
+
+epoch 22 Map 分类结果：divider `0.55845`（@0.5 `0.39344`）、
+ped_crossing `0.36957`（@0.5 `0.13692`）、boundary `0.70102`（@0.5
+`0.56054`）、centerline `0.56998`（@0.5 `0.42225`）。四类 mAP 为
+`0.54975`；排除 centerline 的三类均值为 `0.54301`。
+
+epoch 22 OD 各类 mAP：car `0.84643`、truck `0.44940`、
+construction_vehicle `0.13150`、bus `0.53128`、trailer `0.20138`、barrier
+`0.45110`、motorcycle `0.32533`、bicycle `0.00005`、pedestrian `0.65668`、
+traffic_cone `0.43213`。OD 的主要短板在尾类，尤其 bicycle。
+
+### What the result does and does not prove
+
+- 同帧官方数据下两任务一直提升到 epoch 22，没有证据表明共享 BN/任务冲突仍在
+  后期造成 Map 崩塌；但若要量化多任务代价，仍必须训练同架构、同输入和同优化
+  配方的 OD-only 与 Map-only 对照。
+- MapTRv2 公布的 R50 BEVPool 24-epoch `61.4` 是三类指标，且公开 centerline
+  版本仍标为 WIP。当前三类均值约 `54.3`，差约 7.1 个点，不是 30 个点；此外
+  ROI 轴向约定不同，因此仍非严格同口径。
+- 当前 Map 配方只有 40 个 one-to-one vectors、15 points、无 one-to-many、
+  0.6 m 共享 BEV、256x704 输入、Map head LR `2e-4`，并有外层 `0.12` 缩放；
+  官方较强配方使用更高容量/分辨率和更强优化，不能把差距全部归因于多任务。
+- 当前 OD 是 Anchor3DHead + R50，并且没有 CBGS、4 sweeps、3D BEV augmentation、
+  velocity head；公开 BEVFusion 高分采用不同检测头、LiDAR 编码器和图像骨干。
+  因而当前 `0.40254/0.42902` 不能直接与公开 TransFusion-L/CenterPoint 数值归因比较。
+- v15/v16 均没有使用 GradNorm；日志中的 `optimizer/grad_norm` 是梯度范数监控，
+  训练仍使用 `max_norm=35` 的梯度裁剪。decoder GN 与 GradNorm 无关。
+
+## nuScenes v16 LR-only ablation (2026-09-13)
+
+v16 由 v15 做受控学习率消融，输出目录为
+`work_dirs/shared_bev/nuscenes/joint_6layer_gn_map_x30_y15_single_frame_lss03_lr2e4_map6e4_warmup500upd_24e_bs2_acc2_w4_v16`。
+模型、数据、loss scale 和有效全局 batch 保持不变，仅修改：
+
+- shared/OD 基础 LR：`1e-4 -> 2e-4`；
+- camera backbone multiplier：`0.6 -> 0.3`，故其峰值 LR 仍为 `6e-5`；
+- Map head multiplier：`2 -> 3`，峰值 LR `2e-4 -> 6e-4`；
+- warmup：4000 -> 1000 micro-iterations，即 2000 -> 500 optimizer updates；
+- evaluation/checkpoint interval：2 -> 4 epochs；
+- `workers_per_gpu`：4 -> 2，仅降低 CPU worker 数；`samples_per_gpu=2`、
+  `cumulative_iters=2` 不变。
+
+配置和启动脚本已完成本地解析、断言、shell syntax 与 diff 检查，并同步至
+4090_8；远端 MD5 分别为 config `914c651eb060563a337feb17432ffa6f`、script
+`99bde6612557bc2a69075f53edddb522`。训练已由用户通过
+`bash tools/3dod_maptr/train_shared_bev_nuscenes_joint.sh` 启动。
+
+运行态核验显示 8 张卡各一个训练 rank，没有重复训练或评估进程。`nvidia-smi`
+显示每卡约 24.1/24.6 GiB，但 MMCV 记录的活跃训练显存为 v15 `6381 MiB`、v16
+`6385 MiB`，两者基本一致。workers 只影响 CPU，不会降低显存；其余显存主要由
+PyTorch reserved/cache、CUDA/NCCL、spconv 和自定义算子 workspace 占用，当前
+没有证据表明是进程泄漏。
+
+早期 v16 loss 下降明显快于 v15，但初期 raw gradient 很大并由 `max_norm=35`
+裁剪；这只能说明训练已正常运行，不能提前代表泛化更好。首个可靠判断点为
+epoch 4 双任务评估。若需要进一步降显存，可考虑 batch 1 + 累计 4 保持全局
+batch 32，但会改变每卡 BN 统计，不属于本次 LR-only 消融。
+
 ## Current decisions
 
 - 2026-09-09 decoder-GN G24 已从同目录 `epoch_2.pth` 配置为真正的

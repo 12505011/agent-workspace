@@ -14,11 +14,18 @@
 
 ## Current state
 
-当前训练是基于 G24 分组 LR 的 fresh decoder-GN 实验，见
-[experiments.md](experiments.md#current-decisions)。相机、数据、调度和 loss
-权重继承 G24；只将共享 BEV decoder 的 BN 改为 GN。OD/shared LR=1e-4、
-camera backbone=6e-5、Map head=2e-4，外层权重 1/0.12/0.04。以下 1:1 与
-front3 描述是历史实验，不是当前启动默认值。
+2026-09-13 当前代码分支为 `bev_3dod_maptr_shared_bev_nuscenes`，主实验已从
+Westwell 分离数据切换为 nuScenes 官方同帧 OD+Map 联合数据。v15 已完成 24
+轮，Map/OD 均在 epoch 22 达到最好：Map mAP `0.54975`、OD mAP `0.40254`、
+NDS `0.42902`；epoch 24 仅轻微回落，没有出现历史 Westwell 分离数据上的 Map
+崩塌。当前正在运行 v16 学习率受控消融：保持模型、数据、loss 和全局 batch
+不变，仅提高 shared/OD 与 Map head LR、缩短 warmup，并改为每 4 epoch 评估。
+完整配置、曲线和可比性边界见 [experiments.md](experiments.md)。
+
+历史 Westwell 当前基线曾是 G24 分组 LR 的 fresh decoder-GN 实验；OD/shared
+LR=`1e-4`、camera backbone=`6e-5`、Map head=`2e-4`，外层权重
+OD/Map/depth=`1/0.12/0.04`。以下 1:1、front3、G/GN 内容用于历史复现，不是
+当前 nuScenes 启动默认值。
 
 已在代码分支 `bev_3dod_maptr_shared_bev_mmdet3d` 实现源相机名称到逻辑
 相机槽位的映射。联合训练使用两个独立 DataLoader 和交替 runner；早期 E/E2
