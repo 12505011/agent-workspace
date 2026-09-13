@@ -133,6 +133,66 @@ the plans. Local build dependencies were TensorRT 8.5.2.2, CUDA 11.4 and cuDNN
 build and smoke execution passed. These RTX3060 plans are validation artifacts,
 not portable Orin deliverables.
 
+## Epoch-16 deployment candidate (2026-09-13)
+
+The Map-best epoch-16 checkpoint was re-synced from 4090_8 because the file at
+the original local work-dir path was truncated: it was only 129,499,136 bytes
+and `torch.load` failed with `failed finding central directory`. The damaged
+file was preserved. The verified server copy is stored independently at:
+
+`work_dirs/checkpoints/shared_bev_multitask_decoder_gn_epoch16_20260913/best_map_NuscMap_chamfer_mAP_epoch_16.pth`
+
+It is 503,454,405 bytes with MD5
+`6a06245320f1f92a6f643db280222eea`; checkpoint metadata reports epoch 16 and
+iteration 98,400. Tensor shapes confirm four Map decoder layers, 40 instance
+queries, 15 points per vector, and a 34x90 Map positional grid.
+
+The current nuScenes branch resolves the same Westwell source config to six
+decoder layers, so it is not valid for this historical checkpoint. Export was
+therefore isolated at training/deployment commit `f72fb84`, whose executable
+config resolves to the saved training contract: four decoder layers, Map/OD
+three-camera routes with a four-physical-camera union, 0.6 m Map voxel size,
+40 vectors and 15 points. No current nuScenes source changes were modified.
+
+Epoch-16 ONNX directory:
+
+`work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch16_4cam/onnx`
+
+| Graph | MD5 | Bytes |
+| --- | --- | ---: |
+| `camera.backbone.onnx` | `608dcc5b03f29970b6860b8d70ce2475` | 108,342,888 |
+| `camera.vtransform.onnx` | `67b1dfb24c76e51e0edd31081cfa8263` | 692,848 |
+| `lidar.backbone.xyz.onnx` | `24a55406000f7fafa497b9e18bbd1656` | 5,393,868 |
+| `fuser.onnx` | `dfdd480f89f372642adc3cea988454fb` | 21,419,101 |
+| `anchorhead.bbox.onnx` | `5a89363f5c7426ff527e824f300c25cf` | 780,815 |
+| `maptr_decoder_head.onnx` | `3eb79508183eff8a17276859820e9b53` | 23,414,819 |
+
+All standard graphs passed ONNX checker; the sparse LiDAR graph retains the
+intentional runtime custom parser contract. Map-head export matched the patched
+PyTorch forward exactly for classification and bbox outputs, with maximum point
+error `4.547e-11`. The Map outputs remain `[4,1,40,7]`, `[4,1,40,4]`, and
+`[4,1,40,15,2]`.
+
+RTX3060 FP16 bundle:
+
+`work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch16_4cam/build_rtx3060_cuda114_trt8522_fp16`
+
+| Runtime artifact | MD5 |
+| --- | --- |
+| `camera.backbone.plan` | `155f7ff2ebe9f0b58488e43120ac3346` |
+| `camera.vtransform.plan` | `21f79aaa585684c24e98cfd85790dfdb` |
+| `fuser.plan` | `11a6421191e259b8183c925403d753e3` |
+| `anchorhead.bbox.plan` | `4736e6e87fca208b37710f9ad8776ae4` |
+| `maptr_decoder_head.plan` | `bdc99687e379a0a689d2fa78be5d8c4c` |
+| `lidar.backbone.xyz.onnx` | `24a55406000f7fafa497b9e18bbd1656` |
+| `libmaptr_plugins.so` | `7849f28546bf6a8f633e96e652a4e4cb` |
+
+All five dense engines built and completed one TensorRT smoke inference in the
+fixed local RTX3060 container (TensorRT 8.5.2.2/CUDA 11.4). Bundle files were
+returned to `westwell:westwell`. This validates export/build/load mechanics,
+not numerical parity on recorded data; these plans must not be copied to Orin
+or another TensorRT/GPU target as final engines.
+
 ## Deployment plan
 
 ### 1. Freeze and inspect the model contract
