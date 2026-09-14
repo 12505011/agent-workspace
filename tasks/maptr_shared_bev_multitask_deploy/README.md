@@ -295,6 +295,96 @@ Acceptance checks:
 - Record hashes, contracts, commands and concise validation results here as each
   milestone is completed.
 
+## Runtime replay findings and export corrections (2026-09-14)
+
+Recorded-data initialization established the following MapOD input contract:
+
+- `dl_bevfusion_mapod` reads only its own profile section and is independent
+  from the legacy `dl_bevfusion` camera remap;
+- the four physical cameras are raw IDs `0, 1, 6, 7`, mapped to MapOD union
+  slots `3, 1, 2, 0` respectively;
+- OD uses union slots `[0, 1, 2]`, while Map uses `[3, 1, 2]`;
+- Player supplies undistorted `1400x1000` images; MapOD crops ROI
+  `(220,116,960,768)`, then preprocesses the `960x768` images to the network
+  input size `704x256`.
+
+The runtime still contains an older calibration conversion which reports and
+computes `1920x1536 -> 960x540`: it halves `fx/fy/cx` and applies
+`cy = cy / 2 - 110`. This disagrees with the current `960x768` preprocessor
+input and remains an open projection-correctness issue. It did not cause the
+initialization aborts described below.
+
+### Initialization failures resolved or isolated
+
+1. Two stale playback `loader_exe` processes were found consuming about
+   2.63 GiB of GPU memory each. After they were stopped, the earlier
+   `fuser.plan` deserialization failure no longer reproduced. Always verify
+   that only one playback loader is active before attributing initialization
+   failures to an engine.
+2. The sparse LiDAR parser unconditionally accessed `node.input(2)` as bias.
+   The epoch-16 ONNX contains bias-free sparse convolutions with only
+   `[feature, weight]`, causing a protobuf bounds abort in
+   `get_initializer_data`. The independent MapOD parser now supplies an
+   explicit FP16 zero bias of shape `[out_channels]`; the legacy
+   `dl_bevfusion` parser was not changed.
+3. After the bias fix, initialization advanced to
+   `spconv::EngineBuilderImpl::build` and aborted. Inspection proved the
+   deployed epoch-16 LiDAR ONNX was topologically disconnected: examples were
+   `conv0: 0 -> 1`, followed by `relu0: 2 -> 2`. The custom exporter did not
+   serialize BatchNorm, and its inplace-ReLU hook overwrote the input tensor
+   graph ID.
+4. The export command initially ran on the nuScenes branch, where the shared
+   config resolves to six Map decoder layers. The historical Westwell
+   checkpoint contains four layers, so strict checkpoint loading correctly
+   rejected it. Do not use non-strict loading to hide this mismatch.
+
+### Code corrections
+
+Training/export repository, branch `bev_3dod_maptr_shared_bev_mmdet3d`:
+
+- `deployment/scripts/3dod_maptr/export_scn.py` now folds LiDAR BatchNorm into
+  sparse convolutions and fuses the following ReLU before custom ONNX tracing;
+- `deployment/export/lean/exptool.py` preserves the incoming graph ID before
+  registering an inplace ReLU output;
+- `deployment/scripts/3dod_maptr/inspect_shared_bev_onnx.py` now validates
+  sparse-graph topological connectivity instead of skipping all structural
+  validation for custom operators.
+
+Runtime repository, branch `release-test-mapod-share-model-5.7`:
+
+- the independent MapOD sparse parser accepts bias-free SparseConvolution
+  nodes by creating zero bias;
+- missing SparseConvolution/ReLU upstream tensors now produce an explicit
+  parser error and return failure instead of reaching spconv with a null
+  tensor.
+
+The training/export repository was switched back from
+`bev_3dod_maptr_shared_bev_nuscenes` to
+`bev_3dod_maptr_shared_bev_mmdet3d`. Uncommitted nuScenes work was preserved in
+the named stash `wip: preserve nuscenes changes before returning to westwell`.
+The Westwell source config resolves to four decoder layers and matches the
+epoch-16 checkpoint.
+
+### Superseded artifact and next handoff
+
+The epoch-16 `lidar.backbone.xyz.onnx` with MD5
+`24a55406000f7fafa497b9e18bbd1656` is invalid for runtime use despite its
+previous interface-only inspection. It must be replaced and its manifest/hash
+updated after re-export. Existing dense TensorRT plans are not evidence that
+the runtime-parsed sparse ONNX is valid.
+
+Next steps:
+
+1. Re-export only `lidar.backbone.xyz.onnx` from the four-layer Westwell config
+   and epoch-16 checkpoint using the corrected `export_scn.py`.
+2. Confirm the sparse graph has no unavailable node inputs and record the new
+   MD5.
+3. Replace the bad sparse ONNX in the container, rebuild/install the updated
+   independent MapOD runtime, and replay with exactly one loader process.
+4. Once initialization and both outputs work, correct the remaining
+   `960x540` calibration conversion against the verified `960x768` input and
+   validate projection behavior.
+
 ## Runtime implementation status (2026-09-11)
 
 The runtime target branch now contains the independent module
