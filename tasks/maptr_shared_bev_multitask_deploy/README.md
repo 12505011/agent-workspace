@@ -425,6 +425,39 @@ resolve the legacy calibration conversion that still reports
 `1920x1536 -> 960x540`, verify projection against the actual `960x768` crop,
 then compare OD boxes and Map vectors numerically with offline inference.
 
+### Orin98 engine bundle (2026-09-14)
+
+The complete epoch-16 ONNX set was re-exported after the sparse graph fix and
+passed the shared contract checker. Commit `764c893` makes sparse-output
+validation depend on the single output shape `[1,256,180,180]` instead of the
+exporter's internal tensor ID, which legitimately changed from `45` to `40`
+after BN/ReLU fusion.
+
+All ONNX files and `export_manifest.json` were copied to
+`nvidia@192.168.103.98` under:
+
+`/data/code/all_ws/ws/ruicao/baize_ruicao/code/maptr/work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch16_4cam/onnx`
+
+Source and destination MD5 values matched for all seven files. The MapTR
+plugin was compiled natively inside `baize_ruicao-wviz-1` and verified as an
+ARM aarch64 shared object. Five FP16 dense engines were then built with
+TensorRT 8.5.2/CUDA 11.4 and every engine passed a `trtexec --loadEngine`
+smoke test. The deployable bundle is:
+
+`/data/code/all_ws/ws/ruicao/baize_ruicao/code/maptr/work_dirs/onnx_engines/shared_bev_multitask_decoder_gn_epoch16_4cam/build_orin_cuda114_trt8522_fp16`
+
+Bundle checksums are recorded in its `engine_checksums.md5`. It contains
+`camera.backbone.plan`, `camera.vtransform.plan`, `fuser.plan`,
+`anchorhead.bbox.plan`, `maptr_decoder_head.plan`, the corrected sparse
+`lidar.backbone.xyz.onnx`, the aarch64 `libmaptr_plugins.so`, and the export
+manifest.
+
+The first transfer exposed a full `/data` partition. Only the recoverable
+package cache files directly inside `/data/tmp/apt/archives` were removed;
+project, recording and model data were not touched. Do not deploy the bundle
+into the active resource directory until its exact Orin profile/install target
+is confirmed.
+
 ## Runtime implementation status (2026-09-11)
 
 The runtime target branch now contains the independent module
