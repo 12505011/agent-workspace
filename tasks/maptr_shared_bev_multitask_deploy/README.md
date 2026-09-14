@@ -513,3 +513,142 @@ findings were resolved in runtime commit `0d7a31041`, profile commit
 `8c3b21a5d`, and export/build commit `f72fb84`. This is implementation
 completion, not deployment acceptance: numerical parity and replay remain
 explicitly deferred.
+
+## Orin latency diagnosis and final architecture direction (2026-09-15)
+
+### What the deployed epoch-16 model actually computes
+
+The historical checkpoint was trained with two different three-camera routes:
+
+- OD route: union camera slots `[0, 1, 2]`;
+- Map route: union camera slots `[3, 1, 2]`.
+
+The runtime already shares LiDAR staging/SCN and the four-camera camera
+backbone, but accurate inference must gather/pool the two camera subsets and
+run VTransform plus the shared fuser/BEV encoder twice. Merely sharing weights
+does not make the two route tensors interchangeable.
+
+Runtime/profile commits `a5800ae0` and `c15d7b581` added a default-off
+`benchmark_single_bev` mode and stage timing. In this mode the Map head is fed
+the OD-route BEV, so it removes the second gather/BEVPool/VTransform/fuser pass
+and measures the desired deployment topology. It is timing-only: Map accuracy
+and output correctness are invalid for this historical checkpoint.
+
+The benchmark does not modify the playback launcher and does not require
+rebuilding the engines. The startup log must show all of the following before
+the result is interpreted as a single-BEV measurement:
+
+- `mode=single_bev`;
+- `configured_fusion_passes=1`;
+- `union_cameras=4`.
+
+### Verified timing evidence
+
+On Orin, after excluding the first 30 frames, 69 single-BEV core records and
+68 complete-process records gave:
+
+| Measurement | Minimum | Median | Mean | P95 | Maximum |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Core wall time | 93.2 ms | 143.0 ms | 147.1 ms | 196.5 ms | 221.6 ms |
+| Complete MapOD processing | 105.8 ms | 172.0 ms | 174.7 ms | 218.8 ms | 264.8 ms |
+
+Representative frame 97 used one fusion pass and reported 129.9 ms core and
+145.2 ms complete processing. Its principal stream intervals were 54.3 ms
+LiDAR voxelization/SCN, 16.2 ms camera backbone, 21.1 ms combined
+gather/BEVPool/VTransform/fuser, 2.7 ms OD head, 9.8 ms OD postprocess and
+20.9 ms Map head.
+
+For the same steady-state window, selected single-BEV stage distributions
+were:
+
+| Stage | Median | Mean | P95 | Observed range |
+| --- | ---: | ---: | ---: | ---: |
+| LiDAR voxelization/SCN | 51.5 ms | 55.0 ms | 84.4 ms | 39.8-117.1 ms |
+| Camera backbone | 15.3 ms | 17.2 ms | 27.4 ms | 14.4-38.2 ms |
+| OD fuser/BEV encoder | 17.6 ms | 19.4 ms | 31.1 ms | 17.5-42.4 ms |
+| OD postprocess | 10.0 ms | 12.4 ms | 31.4 ms | 5.1-41.0 ms |
+| Map head | 24.1 ms | 27.8 ms | 66.0 ms | 6.5-88.9 ms |
+
+A clean dual-route frame showed about 21.8 ms of intrinsic extra Map-route
+gather/BEVPool/VTransform/fuser work. Therefore the second route is real but
+cannot explain the full 120-240 ms range. Long host submission intervals,
+high CPU load and corresponding CUDA-stream idle intervals account for much
+of the remaining tail. Image undistortion was disabled during the comparison,
+so it is not the root cause of this latency distribution. GPU/CPU temperature
+and the configured MAXN mode did not show thermal throttling; the available
+evidence does not prove GPU compute contention.
+
+Do not use `stdbuf ... | tee full.log | grep ...` for final timing. It forces
+line-buffered production and writes the entire high-volume playback log before
+filtering, which can perturb CPU scheduling and I/O. Filter timing tags first,
+then tee only the filtered lines. The playback script itself must remain
+unchanged.
+
+`map_instances=0` was still observed. The measured Map decode/output cost is
+therefore not yet a valid loaded-output latency, and the result is not an
+end-to-end acceptance measurement.
+
+### Selected optimal architecture
+
+The user confirmed that the next model can use the same four physical cameras
+for both OD and Map. The preferred solution is therefore to train a new model
+from scratch with a genuinely shared inference path rather than force the
+historical checkpoint into a topology it was not trained on:
+
+1. Use the same four cameras in the same order for both tasks, with one shared
+   preprocessing, calibration and image-augmentation contract.
+2. Run the four-camera backbone once and construct one camera BEV/LSS output.
+3. Run LiDAR SCN once and fuse the camera/LiDAR BEVs once.
+4. Run the shared BEV encoder once, then branch only into the existing OD and
+   Map heads.
+5. Train and evaluate this exact topology; the deployment must not introduce
+   task-specific camera routes that were absent during training.
+6. Export one camera backbone, one VTransform, one fuser/BEV encoder and the
+   two heads. Runtime `single_bev` then becomes the normal accuracy-valid path,
+   not a benchmark override.
+
+OD and Map annotations may remain in separate datasets. They do not need to
+exist on the same frame to train this topology, but both dataloaders must emit
+the identical four-camera input contract. Alternate or accumulate task batches
+while passing both through the same trunk. Define the schedule by actual
+per-task forward/backward/update counts rather than the ambiguous outer
+"epoch": give Map at least the same number of supervised updates as its
+Map-only 24-epoch baseline, prevent the much larger OD dataset from dominating
+the shared trunk, and report raw OD loss, raw Map-head loss, depth loss and the
+weighted optimization total separately. Start with equal normalized OD/Map
+gradient contribution at each joint optimizer cycle; tune task weights only
+after the shared-camera baseline is measured.
+
+Normalization should be changed selectively. Keep a pretrained camera
+backbone's frozen/stable BN where its statistics are not being updated, and use
+GN in the task-sensitive shared BEV decoder/SECOND/SECONDFPN blocks where the
+separate OD and Map data distributions previously corrupted shared BN
+statistics. Converting every BN layer to GN is not the default plan.
+
+This removes approximately 22 ms of duplicate route work while preserving a
+meaningful accuracy contract. It does not by itself guarantee the historical
+60-80 ms latency: the measured lower bound is currently about 93 ms core and
+the steady-state median is about 143 ms. After correctness is established,
+optimization priority is:
+
+1. overlap LiDAR SCN and the camera branch on separate CUDA streams;
+2. reduce SCN execution and long-tail variance;
+3. investigate Map-head enqueue/stream stalls (normal engine work can be near
+   6-7 ms, far below the observed P95);
+4. reduce OD CPU NMS and pointcloud/polygon association synchronization;
+5. consider asynchronous or lower-rate Map publication only as a product-level
+   fallback, not as a substitute for the correct shared model.
+
+### Acceptance gates for the retrained model
+
+- Four-camera identities, ordering, `1400x1000 -> 960x768 -> 704x256`
+  preprocessing and calibration matrices match training exactly.
+- PyTorch, ONNX and Orin TensorRT shared-BEV and both-head outputs pass
+  numerical comparison on fixed recorded frames.
+- OD output remains compatible with the existing object pipeline and Map
+  publishes nonzero, geometrically correct `maptr_pointcloud` instances.
+- Latency is measured without verbose full-log capture, after warmup, with at
+  least P50/P95/core/complete-process statistics.
+- Accuracy and latency are both measured with the same production topology;
+  timing-only `benchmark_single_bev` results are never reported as model
+  accuracy.
