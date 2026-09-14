@@ -385,6 +385,46 @@ Next steps:
    `960x540` calibration conversion against the verified `960x768` input and
    validate projection behavior.
 
+## Successful MapOD playback milestone (2026-09-14)
+
+The corrected four-layer Westwell epoch-16 bundle now initializes and runs in
+recorded-data playback. This closes the engine-loading and sparse-LiDAR graph
+blockers above. The replacement `lidar.backbone.xyz.onnx` has MD5
+`05598ea2927401765e294aff95bb4dcd`; the superseded invalid artifact must not be
+restored.
+
+Changes were committed and pushed independently so ownership remains clear:
+
+- MapTR/export branch `bev_3dod_maptr_shared_bev_mmdet3d`, commit `5c87b52`:
+  folds sparse-backbone BN/ReLU before export, preserves inplace-ReLU graph
+  input IDs, and validates sparse ONNX topology;
+- perception_q branch `release-test-mapod-share-model-5.7`, commit `1f941844`:
+  fixes independent MapOD initialization and sparse parsing, adds the Player
+  crop/input diagnostics, preserves the existing OD output path, and publishes
+  Map vectors on `maptr_pointcloud`;
+- profile_project branch `release-test-mapod-share-model-5.7`, commit
+  `a06088b9f`: enables the independent MapOD pipeline, adds the private
+  four-camera remap and the `1400x1000 -> 960x768 -> 704x256` input contract.
+  The legacy `dl_bevfusion` and `dl_bevfusion_maptr` configuration blocks and
+  pipeline remain present and independent.
+
+OD and Map confidence filtering are independently configurable in the MapOD
+profile:
+
+- `dl_bevfusion_mapod.params.postprocess.score_thresh` controls OD anchor-box
+  decoding and is currently `0.3`;
+- `dl_bevfusion_mapod.params.map_score_threshold` controls MapTR vector
+  decoding and is currently `0.4`.
+
+Changing one does not change the other. OD also passes through the existing
+downstream object filters, so class-specific `score_threshes` later in the
+pipeline may further remove OD results; those filters do not affect MapTR.
+
+Remaining acceptance work is output-quality validation rather than startup:
+resolve the legacy calibration conversion that still reports
+`1920x1536 -> 960x540`, verify projection against the actual `960x768` crop,
+then compare OD boxes and Map vectors numerically with offline inference.
+
 ## Runtime implementation status (2026-09-11)
 
 The runtime target branch now contains the independent module
@@ -393,7 +433,7 @@ single MapOD model directory, loads `libmaptr_plugins.so` before deserializing
 the Map engine, runs the four-camera backbone once, then gathers and pools the
 task-specific three-camera routes before applying the shared fuser/decoder
 weights. It publishes the original ordered Map decoder points through
-`mapod_pointcloud` while preserving the existing OD object path.
+`maptr_pointcloud` while preserving the existing OD object path.
 
 The existing `src/dl_runtime/dl_bevfusion` and all of its files remain
 unchanged. To avoid header and dynamic-symbol collisions when both old and new
@@ -420,9 +460,9 @@ Code/build checks completed before the user requested no further testing:
 - container build of `bevfusion_mapod_core` and the final `lidar_obj_det`
   target completed successfully.
 
-Per user decision, this milestone does not include data replay or numerical
-output validation. The new profile pipeline remains non-default until
-target-Orin engines and end-to-end outputs are validated.
+At that earlier milestone, data replay and numerical output validation were
+deferred. Recorded-data startup was subsequently validated in the successful
+playback milestone above; numerical parity remains open.
 
 ## Review correction (2026-09-11)
 
