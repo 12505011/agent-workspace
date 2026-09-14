@@ -652,3 +652,79 @@ optimization priority is:
 - Accuracy and latency are both measured with the same production topology;
   timing-only `benchmark_single_bev` results are never reported as model
   accuracy.
+
+### Confirmed runtime parallelism gaps and optimization order
+
+Code inspection confirmed that the legacy `dl_bevfusion` does not overlap its
+LiDAR and camera branches. It passes one CUDA stream through point staging,
+LiDAR voxelization/SCN, image normalization, depth projection, camera backbone,
+BEVPool, VTransform, fuser, head and postprocess in that order. Voxelization
+also calls `cudaStreamSynchronize` to read the dynamic voxel count. The
+`release-test-maptralone-parallel-5.6` branch does not change this BEVFusion
+core; its parallelism comes from running the independent LiDAR-only OD and
+camera-only MapTR modules concurrently.
+
+The selected implementation order for the independent MapOD runtime is:
+
+1. Preserve the planned accuracy-valid four-camera/single-Shared-BEV model.
+2. Enqueue the camera frontend on a nonblocking camera stream before entering
+   the LiDAR SCN call on a separate stream. Both wait on a point-input-ready
+   event, and the fuser stream waits for camera-ready and LiDAR-ready events.
+   Enqueue order matters because the current voxel-count synchronization blocks
+   its CPU caller even though it need not block work already queued on another
+   CUDA stream.
+3. After Shared-BEV is ready, submit OD and Map heads on separate streams.
+   Launch Map work before entering OD's synchronous D2H/CPU NMS so the CPU
+   postprocess no longer leaves the GPU Map path idle. Preserve buffer lifetime:
+   with the historical dual-route checkpoint, OD must finish consuming the
+   reusable fuser output before the Map route overwrites it.
+
+SCN optimization must start by splitting the current combined stage into
+buffer clear, hash/voxelization, voxel-count D2H synchronization, reduce-mean,
+spconv rulebook construction and sparse kernels. Safe runtime candidates are
+stream-local/event synchronization, generation-tag or touched-voxel buffer
+reset, persistent spconv workspace and pinned/double-buffered point staging.
+Model-changing candidates are calibrated/QAT INT8 sparse convolution, coarser
+XY voxels, a smaller useful Z range, lower active-voxel limits and a narrower
+sparse backbone; all require numerical/accuracy validation and most require
+retraining. The current epoch-16 sparse ONNX contains 21 SparseConvolution
+nodes without INT8 precision attributes, so it follows the FP16 parser path;
+INT8 cannot be enabled correctly by changing only a deployment profile flag.
+
+After the frontend, the other high-value work is OD/Map head concurrency,
+removing unnecessary synchronization around OD CPU NMS, reducing the
+10-45 ms pointcloud/polygon association path, and using CUDA Graphs for fixed
+dense subgraphs if profiling shows launch overhead. Cross-frame double
+buffering primarily improves throughput and is not counted as a single-frame
+latency reduction.
+
+### Runtime implementation of optimization steps 2 and 3 (2026-09-15)
+
+The independent `dl_bevfusion_mapod` runtime was changed; legacy
+`dl_bevfusion`, standalone MapTR, profiles and playback scripts were not
+modified.
+
+- Four nonblocking CUDA streams now separate LiDAR SCN, camera frontend, OD
+  head and Map head work. CUDA events express input readiness, the LiDAR/camera
+  join, head input readiness and the historical dual-route fuser-buffer
+  lifetime constraint.
+- Camera normalization/depth/backbone is submitted before the blocking SCN
+  host call. SCN runs on its own stream, and fusion waits for both branches.
+- For the deployed Anchor3D path, the OD and Map TensorRT heads are submitted
+  independently. In the dual-route compatibility path, Map route generation
+  first waits until the OD engine has consumed the reusable fuser output. Map
+  head execution is then overlapped with OD decode/D2H/CPU NMS.
+- OD result count and bounded box output use pinned host buffers and
+  stream-local asynchronous D2H followed by one OD-stream synchronization.
+  This removes the previous blocking `cudaMemcpy` on implicit/default-stream
+  semantics, which could serialize otherwise independent Map work.
+- Benchmark documentation now treats the frontend and head regions as joined
+  parallel critical paths. Caller-stream stage values are not per-branch
+  kernel durations; `core_wall_ms` and outer process timing remain the primary
+  A/B metrics.
+
+Source-contract validation passes three checks covering the independent
+frontend streams/event join, head submission order and pinned stream-local OD
+D2H. `git diff --check` passes. Target-container compilation and real Orin
+playback remain pending and must confirm both correctness and actual overlap;
+no runtime performance gain is claimed before that validation.
