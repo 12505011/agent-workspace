@@ -458,6 +458,13 @@ project, recording and model data were not touched. Do not deploy the bundle
 into the active resource directory until its exact Orin profile/install target
 is confirmed.
 
+The Orin runtime target was subsequently confirmed and the nine-file bundle
+(the five plans, sparse LiDAR ONNX, aarch64 plugin, manifest and checksum file)
+was installed inside `baize_ruicao-wviz-1` at
+`/opt/qomolo/qpilot-resource/perception/model/dl_bevfusion_mapod`. The target
+directory did not previously exist, so no older bundle was overwritten. A
+post-copy `md5sum -c engine_checksums.md5` passed for every runtime artifact.
+
 ## Runtime implementation status (2026-09-11)
 
 The runtime target branch now contains the independent module
