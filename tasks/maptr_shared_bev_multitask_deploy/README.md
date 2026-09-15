@@ -852,3 +852,97 @@ time`), pushed to origin; parent `d39a0ecd`.
   fixed before any capacity experiment: the returned voxel count is not clamped
   after scatter drops out-of-capacity voxel IDs, and the zero-voxel fallback path
   has no valid initialised feature/index.
+
+## 2026-09-15 M1 result: where the Map head's 37 ms actually is
+
+Runtime `perception_q` @ `b9832bb6` (branch `release-test-mapod-share-model-5.7`,
+pushed), which adds the Map-side split. Measured by the user on Orin, frames
+74/75 of a single-BEV run (values in ms, frame 74 / frame 75):
+
+- `map.head_enqueue` 42.657 / 37.565, decomposed by the new CPU sections:
+  - `map.launch_events` 0.004 / 0.003 (cudaEventRecord + cudaStreamWaitEvent)
+  - `trt.set_bindings` 0.011 / 0.008 (address binding for 4 tensors)
+  - **`trt.enqueueV3` 42.056 / 37.521 — 99.7 % of the total**
+  - `map.launch_head_ready_event` 0.045 / 0.001
+- Control: the Anchor3D engine goes through the same wrapper and the same
+  asynchronous `context->enqueueV3(stream)` call, and costs 0.13-0.16 ms.
+  That is a factor of ~260.
+- Combined with the earlier symbol evidence (libmaptr_plugins.so imports no
+  blocking CUDA API, only cudaLaunchKernel and operator new), this rules out:
+  upstream wait, address binding, our wrapper, and explicit synchronisation
+  inside the ms_deform_attn plugin.
+- The remaining reading is that TensorRT does not return from the enqueue
+  asynchronously on this engine/plan. **Not yet proven** — codex corrected two
+  of my inferences and the discriminating experiment is the bench tool below.
+- SCN is unchanged and still the other half: `scn.spconv_forward` stream/host
+  45.59/43.72 and 51.15/49.06 (host ≈ stream, so the calling thread is occupied
+  for the whole call).
+- No measurable regression from the instrumentation itself: `core_wall_ms`
+  97.63 / 97.06 here vs 96.2-101.1 in the pre-M1 baseline, i.e. the same band.
+
+## 2026-09-15 Map enqueue bench tool (runtime `8b90f176`, not deployed)
+
+`CUDA-BEVFusion/tools/bench_maptr_enqueue.cpp`, built only with
+`-DMAPOD_BUILD_BENCHMARKS=ON`, never installed, referenced by no launcher — it
+isolates the deployed Map engine + plugin from the pipeline. Modes: `normal`
+(bind + `Engine::forward` with the input resident and the stream idle) and
+`graph` (CUDA stream capture wrapping that same `forward()`, then replay), plus
+an element-wise normal-vs-graph output diff (per tensor: non-finite count, max
+abs/rel error, over-tolerance count; integer outputs compared exactly). All
+snapshots and comparisons happen outside the timed windows. 30 warm-up + 200
+measured iterations, each completing before the next starts.
+
+Supporting change: `Engine` gains a read-only `virtual std::string
+tensor_name(int ibinding)` (same index order as `num_bindings()`/`run_dims()`,
+bounds-checked) so the tool can build a bindings map without touching the
+private context. **This adds a vtable slot: `bevfusion_mapod_core` and every
+consumer of `tensorrt.hpp` must be recompiled together.** Compiles locally
+(x86_64, CUDA 11.4 / TRT 8.5.2.2) but has **never been run**: the real engine is
+only reachable on Orin.
+
+The tool answers the question the M1 numbers leave open:
+
+| outcome | next step |
+|---|---|
+| normal standalone ≈ 7 ms while the pipeline shows 37 ms | chase the upstream dependency / concurrency |
+| graph lowers only the host submit time | CPU submit time freed, not a frame-level win |
+| graph lowers both submit and completion | worth integrating into the runtime |
+| capture fails, or the trace shows a long synchronisation | locate the specific API/layer |
+
+## 2026-09-15 Codex plan in force (M1 → M2 → M3)
+
+Codex directs; the sequence it set, after the M1 numbers:
+
+1. (done) M1 split so that `enqueueV3` itself is timed.
+2. (built, not yet run) standalone `normal` vs `graph` comparison above.
+3. (pending) short Nsight Systems capture of the tool run — look for explicit
+   synchronisation, long launch APIs, kernel launch count, allocations/copies,
+   GPU idle gaps.
+4. (conditional) only if the standalone run is clearly faster, add the
+   `Fuser → event → Map` vs `wait-for-Fuser-then-Map` comparison, keeping the
+   full-chain timing so the wait is not merely moved out of the measured window.
+5. Dedicated submission thread: explicitly deferred, not to be combined with the
+   graph work. Also deferred: FP16 plugin, DDS, SCN parameter tuning.
+
+Corrections codex made to my reasoning, worth keeping:
+
+- `cudaStreamWaitEvent` returns immediately on the host and submits a device-side
+  dependency, so a 4 µs event section does **not** prove the upstream wait is
+  absent from the enqueue call.
+- Moving the call to a worker thread would free the main thread under either
+  explanation, so it cannot discriminate between them; compare the worker's own
+  duration and the whole-frame completion instead.
+- A stable per-call duration does not rule out repeated per-call work.
+- Kernel launch count must be counted from a trace, never inferred from
+  layers × queries × heads.
+
+## 2026-09-15 environment note: the stale-model-name trap
+
+Deleting a model name from Hermes' provider catalog (`deepseek-v4-flash`,
+`deepseek-chat`, `deepseek-reasoner` were removed at the user's request) has a
+side effect on **existing sessions**: a session row stores the model string it
+was created with, and resuming such a session re-resolves that now-missing name,
+which silently falls back to another model. Here the CLI session
+`20260915_001611_04f314` holds `deepseek-v4-flash` and came back as
+`deepseek-chat` as a result. Fix is a fresh window, or rewriting the stored
+model string; the chat history itself is intact in `state.db.messages`.
