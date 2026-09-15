@@ -1126,19 +1126,24 @@ directions for a future round, none evaluated here:
     .../bevfusion_mapod/lidar-scn-onnx-parser.cpp  where the per-layer rulebook attribute is read
     .../bevfusion_mapod/lidar-voxelization.hpp     VoxelizationParameter (max_voxels, voxel_size)
 
-## 2026-09-15 SCN CLOSED: the 45 ms is real GPU work, and the GPU is saturated
+## 2026-09-15 SCN CLOSED: device execution is the binding limit (deployment side stops)
 
 The nsys timeline was captured after all (the earlier failures were tooling, not a
 dead end — see the appendix below). Trace: 102 MB, ~5.5 min of playback,
 135,315 kernels, 33,244 synchronisation events, 281,135 host API calls.
 
-### Per-window framing of SCN (10 steady-state windows)
+**Scope of what follows: this is enough evidence to stop blind work on
+synchronisation and core pinning. It is NOT a proof that every deployment-side
+optimisation is impossible.**
 
-SCN kernels all live on one stream (streamId 556); windows were cut on gaps
-> 5 ms between consecutive SCN kernels. GPU-busy time is the union of kernel
-intervals across all streams inside the window.
+### SCN kernel-active windows (10 steady-state windows)
 
-| win | SCN wall | SCN busy | GPU busy | GPU occupancy |
+Terminology matters here: these windows were cut on gaps > 5 ms between
+consecutive SCN kernels on streamId 556, so they are **SCN kernel-active
+windows**, not exact `SCN forward` call boundaries. They may miss preparation or
+waiting around the call, and may split or merge calls.
+
+| win | window | SCN kernel union | GPU active | GPU active share |
 |---|---|---|---|---|
 | 0 | 46.41 ms | 38.94 ms | 46.13 ms | 99.4 % |
 | 1 | 50.95 ms | 38.82 ms | 50.84 ms | 99.8 % |
@@ -1151,18 +1156,18 @@ intervals across all streams inside the window.
 | 8 | 49.42 ms | 39.06 ms | 49.20 ms | 99.5 % |
 | 9 | 46.37 ms | 38.63 ms | 45.95 ms | 99.1 % |
 
-Two readings settle it: GPU occupancy is 96-99.9 % throughout, and SCN's own
-kernels account for a steady 38.6-39.3 ms of each ~46-53 ms window (~82 %).
+SCN's own kernel union is a steady **38.6-39.3 ms** per window. GPU activity is
+near-continuous (96.3-99.9 % of the window).
 
-**Verdict (third row of the agreed decision table): the synchronisation waits on
-SCN's own kernels while the GPU runs continuously.** The waiting is a
-*consequence*, not a root cause. Deleting syncs or pinning cores cannot remove
-the compute cost.
+**Important limit on the occupancy number: kernel activity is not hardware
+saturation.** It says a kernel was executing almost all the time — not that SMs,
+memory bandwidth or other resources were fully occupied. Consequences that follow
+from "the GPU is busy" must therefore be weakened, not treated as proven.
 
-### Who issues the long `cudaDeviceSynchronize`, and why it is not waste
+### Synchronisation attribution, and what it does and does not show
 
 Joined `CUPTI_ACTIVITY_KIND_SYNCHRONIZATION` to `CUPTI_ACTIVITY_KIND_RUNTIME` on
-`correlationId` to attribute each sync to its host call and thread:
+`correlationId` to attribute syncs to their host call and issuing thread:
 
 | API | calls | total |
 |---|---|---|
@@ -1174,26 +1179,53 @@ Joined `CUPTI_ACTIVITY_KIND_SYNCHRONIZATION` to `CUPTI_ACTIVITY_KIND_RUNTIME` on
 | `cudaStreamWaitEvent` | 6,535 | 0.010 s |
 
 The longest device syncs (49-53 ms) are issued by **GStreamer queue threads** —
-`queue17:src`, `queue20:src`, `queue23:src`, `queue28:src` — not by the inference
-code. They are draining the whole device while SCN occupies it. So the large
-"sync time" is other work waiting on SCN, not SCN wasting time.
+`queue17:src`, `queue20:src`, `queue23:src`, `queue28:src` — not by the SCN
+inference call thread.
 
-Correction to an earlier reading of mine: **71.7 % is a share of accumulated CUDA
-API time, not a share of frame latency that is optimisable.** Sync waits can
-overlap GPU work in flight, and API time across threads can overlap. Likewise the
-SCN 31.8 % figure was a share of accumulated kernel duration, not of end-to-end
-latency.
+Two limits that must travel with this finding:
 
-### What this closes
+- It follows that the **global synchronisation total cannot be read as directly
+  removable SCN waste**. It does **not** follow that all synchronisation is
+  necessary, nor that every pegged core was spinning on the GPU. Only the calls
+  actually joined above are attributed.
+- CUDA device/context scope matters: co-running does not by itself prove a wait
+  covered *all* work in another context.
 
-| option | verdict |
+Correction to my own earlier reading: **71.7 % was a share of accumulated CUDA API
+time, not a share of optimisable frame latency** — sync waits can overlap GPU work
+in flight, and API time across threads can overlap. Likewise the SCN 31.8 % was a
+share of accumulated kernel duration, not of end-to-end latency.
+
+### SCN kernel breakdown (arithmetic corrected)
+
+Within SCN's 6.574 s of kernel union, the rulebook/mask/hash group totals
+**1.609 s**, not 1.08 s as an earlier revision stated (that figure covered only the
+first two rows and wrongly claimed the other two were included):
+
+| kernel | total | instances |
+|---|---|---|
+| `spconv::build_subm_rulebook` | 0.635 s | 688 |
+| `spconv::build_spatially_rulebook` | 0.445 s | 688 |
+| `spconv::setup_mask_and_route` | 0.335 s | 688 |
+| `spconv::arange_hash` | 0.193 s | 688 |
+| **group total** | **1.609 s** | |
+
+The rest of SCN's kernel time is convolution/GEMM work (`fp16_gemm_*`,
+`scatter_nd_*`, `add_and_relu`, cuTENSOR permutations).
+
+### What stops here, and what does not
+
+| option | status |
 |---|---|
-| delete/reduce synchronisation | not applicable — the waits are on required SCN kernels |
-| pin SCN to a core | not applicable — the cost is GPU, not CPU contention |
-| Camera BEVPool/VTransform forward-shift | **much reduced value** — the GPU is at 96-99.9 % during SCN, so there is no idle capacity for camera work to fill; earlier justification for this idea is now contradicted |
-| multi-core / reuse rulebooks | not applicable — kernels are GPU-side, rebuilt per frame from that frame's voxel indices |
-| smaller `max_voxels` / coarser voxels / int8 | the only remaining levers, and they are accuracy/retraining decisions |
-| vendor-side spconv optimisation | the remaining engineering route, since `libspconv_q.so` is not ours |
+| deleting / shrinking synchronisation | **not a first choice**, per the attribution above |
+| pinning SCN to a core | **not a first choice** — the attributed syncs are not SCN's |
+| Camera BEVPool/VTransform forward-shift | **deprioritised**, but **not disproven**: kernel activity ≠ resource saturation, so the case for it is weakened, not closed |
+| DDS, INT8, voxel/capacity changes | unevaluated candidates; each needs its own speed-vs-accuracy task |
+| vendor-side spconv optimisation | the leading engineering route, since `libspconv_q.so` is not ours |
+
+On rulebook reuse: these kernels are GPU-side, but that is **not** why cross-frame
+reuse is unavailable. The real reason is that rulebook content derives from each
+frame's voxel indices, which can change frame to frame.
 
 ### Appendix: how the trace was obtained (tooling pitfalls worth keeping)
 
