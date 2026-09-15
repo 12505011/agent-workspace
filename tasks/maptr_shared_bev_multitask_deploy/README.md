@@ -1015,3 +1015,79 @@ the Map head was waiting, SCN genuinely occupies its thread.
   pattern gets wrapped by the terminal and the shell then splits it, which
   created junk files and, in one round, produced the log under the name
   `mapod_dep_B_Tue` because `$(date +%m%d_%H%M)` was broken across a line.
+
+## 2026-09-15 SCN investigation: CPU single-core bound, and the library is opaque
+
+After the Map head was closed, SCN is the largest remaining item:
+`scn.spconv_forward` is 45 ms in both A2 and B, with host ≈ stream.
+
+### What the GPU probe showed
+
+A 60 s playback with `tegrastats --interval 200` on the host (299 samples) plus
+the per-frame `MAPOD_SCN_STAGE` lines (39 frames):
+
+| measure | result |
+|---|---|
+| busiest CPU core | **p50 = 100 %, min = 100 %** across all 299 samples |
+| `GR3D_FREQ` | p25 44 %, p50 79 %, p75 99 % |
+| GPU ≥ 90 % | 134/299 samples (44.8 %) |
+| GPU < 10 % | 34/299 samples (11.4 %) |
+
+So the device is **not** compute-saturated: it is near-idle 11 % of the time,
+and one CPU core is pegged at 100 % throughout. The shape is a **CPU-side
+single-thread bottleneck with the GPU waiting on it**, not a GPU throughput
+limit. (Contrast with the Map head, where the thread was *waiting*; here it is
+*computing*.)
+
+### The library boundary matters more than any tuning option
+
+`libspconv_q.so` is a **prebuilt third-party binary**, not part of this repo:
+
+    /opt/qomolo/welldrive/third_party/third_party_binary/lib/libspconv_q.so   (1.86 MB, 2025-11-07)
+    perception_q/CMakeLists.txt:11,133,148  -> links that absolute path
+    no spconv sources anywhere under src/
+
+Deployment code only wraps it: `lidar-scn.cpp` calls `native_scn_->forward(stream)`
+as one opaque step. Rulebook construction and all 21 sparse convolutions live
+inside that .so.
+
+Symbol inspection of the .so (this is what settles the options):
+
+- **No threading support at all.** No `thread`/`pool`/`parallel`/`omp`/`atomic`
+  symbols. Multi-core execution cannot be enabled from outside the library.
+- **Rulebook "reuse" is not cross-frame caching.** The library exposes
+  `create_submanifold_rulebook` / `create_spatially_rulebook` /
+  `create_inverse_rulebook` / `create_rulebook_reuse_manager`, but these are
+  per-layer encoding schemes (all `W` template instances, not external API).
+  Rulebook content derives from each frame's voxel indices, which change every
+  frame, so there is nothing to cache across frames. An earlier note claiming
+  reuse was a viable direction was **wrong and is retracted here**.
+- The rulebook *type* per layer is an **ONNX node attribute**, parsed at
+  `lidar-scn-onnx-parser.cpp:178-197` (`has_attribute(node, "rulebook")`). It is
+  therefore a property of the model, not of deployment code.
+- `InferTensor::set_dds_num_of_points_pointer(unsigned*)` exists and is callable
+  but is **never set** in this deployment, so the DDS path is inactive.
+- Full int8 kernels are present (`*_dds_i8i8i8`), so an int8 path exists in
+  principle; the profile currently asks for `precision: fp16`.
+
+### Therefore the real option set
+
+| option | verdict |
+|---|---|
+| multi-core SCN | **not possible** — library has no threading interface |
+| rulebook reuse across frames | **not applicable** — derived from per-frame voxel indices |
+| DDS pointer | callable, benefit unmeasured |
+| smaller `max_voxels` (currently 160000) / coarser voxel size | real lever, changes accuracy, needs validation |
+| int8 instead of fp16 | real lever, accuracy must be validated |
+| move SCN off the main thread | moves the wait, does not remove the saturation |
+| overlap camera work under SCN | the earlier Camera BEVPool/VTransform forward-shift idea |
+
+Anything that changes what the library computes (voxel counts, precision,
+rulebook type, backbone) is a model/accuracy change and belongs to a retraining
+decision, not to deployment-side tuning.
+
+### Relevant files
+
+    .../bevfusion_mapod/lidar-scn.cpp              opaque wrapper + the one timing section
+    .../bevfusion_mapod/lidar-scn-onnx-parser.cpp  where the per-layer rulebook attribute is read
+    .../bevfusion_mapod/lidar-voxelization.hpp     VoxelizationParameter (max_voxels, voxel_size)
