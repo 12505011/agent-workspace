@@ -746,3 +746,109 @@ for approximately six CPU cores. After the targeted stop, that container used
 0.02-0.03% CPU and final host samples showed 0-2% per core, GPU 0%. Containers,
 models, profiles and launchers were preserved; new playback measurements are
 still pending.
+
+## 2026-09-15 Orin single-BEV re-measurement (read-only re-read)
+
+`/tmp/mapod_single_bev_timing.log` in `baize_ruicao-wviz-1` was overwritten by a
+new playback run on 2026-09-15 02:05-02:09 UTC (10:05-10:09 CST), i.e. the run
+announced as pending above has happened. Verified facts from that file:
+
+- 1,024,937 lines / 142,410,357 bytes, one run, 1045 frames, all with
+  `mode=single_bev complete=1 union_cameras=4 configured_fusion_passes=1`;
+  the generated profile (02:05 UTC) has `benchmark_single_bev: true`,
+  `enable_timer: true`, `precision: fp16`, `num_camera: 4`.
+- Control environment at read time: `qpilot-orin` 0.03% CPU,
+  `baize_ruicao-wviz-1` ~0% CPU, GR3D 0%, 0-2% per core.
+- `core_wall_ms`: min 86.65 / p50 101.25 / mean 101.30 / p95 106.97 / max 184.53.
+  `core_stream_ms` p50 100.89. `proc_total_ms`: min 99.14 / p50 114.65 /
+  p95 120.92 / max 200.69. Proc decomposition: `points_prepare_ms` 3.35 +
+  `core_call_wall_ms` 101.28 + `cloud_association_polygon_ms` 9.25 (p95 12.16) +
+  `output_objects_cpu_ms` 0.41.
+- Stage p50 `stream_ms`/`host_ms`: `parallel_lidar_camera_frontends`
+  55.63/52.61; `od.fuser_bev_encoder` 17.67/1.45; `od.vtransform` 2.55/0.21;
+  `od.bevpool` 1.16/0.03; `od.gather_d2d` 0.14/0.09;
+  `od.head_postprocess_parallel_map_head` 21.99/45.19;
+  `map.decode_sync_d2h_cpu` 0.07/0.29; `lidar_staging_h2d` 0.22/0.53.
+- Reading (a description, not a proven cause): the two dominant host intervals
+  52.61 + 45.19 = 97.80 ms are ~equal to `core_wall` 101.25 ms, while the
+  matching stream intervals sum to 77.62 ms — in this configuration the frame is
+  CPU-submission bound, not GPU bound.
+- **Confounds — do not attribute the improvement to the parallel commit alone.**
+  The previously recorded figures (min 93.2 / p50 143.0 / p95 196.5 / max 221.6
+  over 69 frames) came from the pre-parallel library *and* with the
+  `qpilot-orin` restart-loop load present. This run changes two variables at
+  once (runtime `d39a0ecd`, competing load removed).
+- `map_instances=0` for all 1045 frames (`od_boxes` 76-81). In `single_bev` mode
+  the MAP head is fed the OD-route BEV, so zero instances is not surprising, but
+  this is still not evidence that the MAP head can emit instances.
+- Playback teardown ends with `auto abort` and a loader SIGABRT during deinit
+  (`LidarObjDetNode::deinit` → `~dl_bevfusion_mapod` → `CoreImplement` →
+  `MapTRHeadImplement` dispose → `MapODTensorRT::EngineImplement` →
+  `nvinfer1::IExecutionContext` release; one counted-deleter frame resolves into
+  the legacy `libperception_q_bevfusion_core.so`). It occurs after the last
+  measured frame; recorded as an independent, unanalysed defect.
+
+## 2026-09-15 instrumentation of the LiDAR/SCN path (runtime `b2e226e3`)
+
+Runtime repo `perception_q`, branch `release-test-mapod-share-model-5.7`,
+commit `b2e226e3` (`perf: instrument LiDAR/SCN sub-stages and per-section CPU
+time`), pushed to origin; parent `d39a0ecd`.
+
+- Adds `[MAPOD_SCN_STAGE]`: the LiDAR branch's own device timeline, recorded on
+  the LiDAR stream (`begin`, `scn.clear_memset`, `scn.hash_build`,
+  `scn.scatter`, `scn.count_wait_sync`, `scn.reduce_mean`,
+  `scn.spconv_forward`).
+- Adds `[MAPOD_CPU_SPLIT]`: per-section host wall time accumulated over the
+  frame, with `calls=`. Section names match the corresponding `MAPOD_STAGE`
+  marks except `scn.count_d2h_issue`, `scn.zero_voxel_fallback`,
+  `camera.frontend_submit`, `od.head_enqueue`, `map.head_enqueue`,
+  `od.head_decode`.
+- Timing-only by construction: outside the timed path every hook is a null-trace
+  no-op, and the existing `MAPOD_STAGE` mark names and order are unchanged, so
+  the 101.25/106.97 baseline above remains comparable.
+- Verified locally in `baize-welldriver-wviz-1` (CUDA 11.4 / TensorRT 8.5.2.2):
+  `bevfusion_mapod_core` rebuilds from touched sources with exit 0 and no new
+  warnings; ad-hoc assertions confirm the three translation units were really
+  recompiled, every pre-existing hook name is retained, and no new CUDA call
+  appears in the runtime path. Script: `/tmp/hermes-verify-mapod-scn-instr.sh`.
+- **Orin's container has no GitLab credentials** (`git ls-remote` fails with
+  `could not read Username for 'https://gitlab.qomolo.com'`), so the Orin
+  checkout cannot `git pull`; sync by patch. Verified Orin layout: source
+  `/debug/src/perception_q` (at `d39a0ecd1`, clean, tracking origin), build
+  `/debug/build/perception_q` (Unix Makefiles, `CMAKE_INSTALL_PREFIX=/debug/install`,
+  targets `bevfusion_mapod_core` and `install`), playback
+  `/debug/baize_player/qbaize_play.sh`.
+
+## 2026-09-15 Codex collaboration protocol (user-defined, in force)
+
+- Codex directs this work; Hermes implements, records here, and reports back.
+  Verified invocation: `codex exec -m gpt-6-astra -c model_reasoning_effort=medium
+  -s read-only "<brief>"` (the read-only sandbox is what enforces the split — it
+  cannot write files); a live probe self-reports as `GPT-6`.
+- Continue the existing thread with `codex exec resume <session id>`; the task
+  thread for this work is session id `01a070d7-60a9-7061-9286-4415abdedc73`
+  (cwd `/data/baize/baize-welldriver/code/maptr`, fork of
+  `019fa6aa-a93f-7e51-9d9b-5760534ff9a0`, last active 2026-09-15 10:07 CST).
+- The user runs the Orin measurements and relays their results; Hermes summarises
+  and reports to that thread, then implements what it decides.
+
+## Open questions / handoff (2026-09-15)
+
+- The SCN optimisation menu is queued pending the split measurement. Runtime-safe
+  candidates (no model change): shrink or remove the per-frame 4.8 MB hash-table
+  and 25.6 MB `voxels_temp` `cudaMemsetAsync` (generation-tag/epoch reset or
+  clearing only the point-count array); right-size the hash table to the actual
+  point count instead of `max_points`; half accumulation in `voxels_temp`;
+  remove the redundant host-to-host staging copy; sweep
+  `SPCONV_FIXED_LAUNCH_POINTS` (read at engine-build time, so one playback per
+  value); move the voxel-count D2H/sync off the critical path, including the
+  library's unused DDS pointer. Export/model-level candidates: rulebook fixed
+  into the ONNX with a fixed point count and a tightened `max_output_points`;
+  coarser XY voxels, narrower Z range, narrower backbone, calibrated INT8.
+- `libspconv_q.so` internals are unreachable — it is a prebuilt third-party
+  binary under `/opt/qomolo/welldrive/third_party/third_party_binary/lib` — so
+  `scn.spconv_forward` can only ever be measured as one stage.
+- Two correctness hazards sit inside the code the SCN work touches and must be
+  fixed before any capacity experiment: the returned voxel count is not clamped
+  after scatter drops out-of-capacity voxel IDs, and the zero-voxel fallback path
+  has no valid initialised feature/index.
