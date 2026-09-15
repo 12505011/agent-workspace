@@ -946,3 +946,72 @@ which silently falls back to another model. Here the CLI session
 `20260915_001611_04f314` holds `deepseek-v4-flash` and came back as
 `deepseek-chat` as a result. Fix is a fresh window, or rewriting the stored
 model string; the chat history itself is intact in `state.db.messages`.
+
+## 2026-09-15 FINAL RESULT: the Map head's 37-46 ms is wait attribution, not cost
+
+The dependence experiment ran on Orin on a cleaned machine (the three other
+containers — `qp_tl-wviz-1`, `wp53-wviz-1`, `qpilot-orin` — were stopped first;
+all three were competing for the device and had invalidated an earlier run).
+
+Two rounds, same clip, same config, machine otherwise idle:
+
+| metric (p50, ms) | A2 async (374 frames) | B explicit (291 frames) | delta |
+|---|---|---|---|
+| `core_wall` | 99.74 | 100.27 | +0.5% |
+| `map.head_enqueue` | 39.74 | 40.22 | +1% |
+| ├ `map.host_wait_fuser_ready` | — | 24.01 | new section |
+| ├ `trt.enqueueV3` | 39.62 | 15.16 | **−62%** |
+| ├ `map.launch_events` | 0.00 | 0.00 | — |
+| `fuser_to_results_ready_wall_ms` | 47.12 | 47.39 | +0.6% |
+| `fuser_to_heads_gpu_ms` | 35.15 | 35.52 | +1% |
+| ├ `fuser_to_od_head_gpu_ms` | 21.10 | 22.88 | +8% |
+| └ `fuser_to_map_head_gpu_ms` | 35.15 | 35.52 | +1% |
+| `scn.spconv_forward` | 45.05 | 44.96 | −0.2% |
+
+**Conclusion (first row of the agreed decision table): the wait simply moved from
+inside the Map call into an explicit host wait.** `enqueueV3` lost 24.5 ms and
+`host_wait_fuser_ready` gained 24.0 ms; both whole-frame metrics are unchanged.
+There is no frame-level win, and the 37-46 ms attributed to the Map head was
+never an optimisable submission cost — reordering submissions or adding a
+dedicated thread cannot reduce it. Map side is closed.
+
+Two things fell out of the experiment that matter for what comes next:
+
+- With the wait unloaded, `trt.enqueueV3` still costs 15.16 ms in the pipeline
+  (p95 21.03) against 5.26 ms standalone with the input resident and no
+  concurrency. Roughly 10 ms is therefore attributable to something other than
+  upstream dependency: submission-path contention, backpressure, CPU scheduling,
+  or the engine genuinely running slower under load. Quantified, not optimised.
+- The Map head is consistently the last of the two heads to finish (35.2/35.5 vs
+  OD's 21.1/22.9), in every frame of both rounds, with no exceptions.
+
+Remaining unexplored bulk is SCN: `scn.spconv_forward` is 45 ms in both rounds
+(host ≈ stream, so the calling thread is occupied for the whole call). It is the
+largest unaddressed item and is a different problem in kind from the Map head —
+the Map head was waiting, SCN genuinely occupies its thread.
+
+### Configuration used
+
+- `profile_project` @ `292408966`: `benchmark_map_ready_mode: async|explicit`
+  next to `benchmark_single_bev`, defaulting to `async` (production behaviour).
+- `perception_q` @ `4d5967ee`: the switch, the explicit wait point, the two
+  cross-stage metrics, and the Anchor3D+single_bev-only guard. Never deployed;
+  `benchmark_single_bev` was already `true` in the playback profile.
+- On Orin the switch lives at line 196 of
+  `project/cnwxijk/qthd/perception_q/79-perception.yaml`; a backup of the
+  pre-edit file sits next to it as `.bak-explicit-*`.
+
+### Measurement hygiene notes worth keeping
+
+- The three stopped containers are the reason an earlier A2 (185 frames,
+  `mapod_dep_A2_0915_0748.log`) showed a uniform +38% slowdown across *all*
+  sections including pure-copy ones: competing load, not a code change. That run
+  is void. `qpilot-orin` has `RestartPolicy: always`, so it comes back after a
+  host reboot and must be stopped again before any future timing run.
+- `nvidia-smi` is not available on the Orin host; `tegrastats` is the tool there.
+  Load average from `/proc/loadavg` was the useful signal (1.76 → 0.67 after
+  stopping the containers).
+- When splicing the log filter, keep the shell command narrow: a long `grep -E`
+  pattern gets wrapped by the terminal and the shell then splits it, which
+  created junk files and, in one round, produced the log under the name
+  `mapod_dep_B_Tue` because `$(date +%m%d_%H%M)` was broken across a line.
