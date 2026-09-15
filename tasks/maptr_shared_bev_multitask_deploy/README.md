@@ -728,3 +728,14 @@ frontend streams/event join, head submission order and pinned stream-local OD
 D2H. `git diff --check` passes. Target-container compilation and real Orin
 playback remain pending and must confirm both correctness and actual overlap;
 no runtime performance gain is claimed before that validation.
+
+### Follow-up after the parallel build (2026-09-15)
+
+See [the latency follow-up](LATENCY_FOLLOWUP_2026-09-15.md) for verified Orin
+installation/profile checks, competing CPU load, standalone per-engine and
+per-layer timings, remaining host scheduling gaps, and the next optimization
+sequence. Orin source and installed core contain `d39a0ecd1` parallel code;
+the latest inspected generated profile disables detailed timing, so no new
+per-stage parallel performance claim is made. The most concrete next runtime
+change is a MapOD-private point-association path that returns only indices,
+followed by static Map CUDA Graph evaluation and measured SCN optimization.
