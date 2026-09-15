@@ -1125,3 +1125,96 @@ directions for a future round, none evaluated here:
     .../bevfusion_mapod/lidar-scn.cpp              opaque wrapper + the one timing section
     .../bevfusion_mapod/lidar-scn-onnx-parser.cpp  where the per-layer rulebook attribute is read
     .../bevfusion_mapod/lidar-voxelization.hpp     VoxelizationParameter (max_voxels, voxel_size)
+
+## 2026-09-15 SCN CLOSED: the 45 ms is real GPU work, and the GPU is saturated
+
+The nsys timeline was captured after all (the earlier failures were tooling, not a
+dead end — see the appendix below). Trace: 102 MB, ~5.5 min of playback,
+135,315 kernels, 33,244 synchronisation events, 281,135 host API calls.
+
+### Per-window framing of SCN (10 steady-state windows)
+
+SCN kernels all live on one stream (streamId 556); windows were cut on gaps
+> 5 ms between consecutive SCN kernels. GPU-busy time is the union of kernel
+intervals across all streams inside the window.
+
+| win | SCN wall | SCN busy | GPU busy | GPU occupancy |
+|---|---|---|---|---|
+| 0 | 46.41 ms | 38.94 ms | 46.13 ms | 99.4 % |
+| 1 | 50.95 ms | 38.82 ms | 50.84 ms | 99.8 % |
+| 2 | 46.82 ms | 38.69 ms | 46.78 ms | 99.9 % |
+| 3 | 52.73 ms | 38.92 ms | 52.52 ms | 99.6 % |
+| 4 | 53.92 ms | 39.29 ms | 53.78 ms | 99.8 % |
+| 5 | 47.15 ms | 38.67 ms | 47.10 ms | 99.9 % |
+| 6 | 48.77 ms | 39.08 ms | 46.96 ms | 96.3 % |
+| 7 | 47.62 ms | 39.12 ms | 46.81 ms | 98.3 % |
+| 8 | 49.42 ms | 39.06 ms | 49.20 ms | 99.5 % |
+| 9 | 46.37 ms | 38.63 ms | 45.95 ms | 99.1 % |
+
+Two readings settle it: GPU occupancy is 96-99.9 % throughout, and SCN's own
+kernels account for a steady 38.6-39.3 ms of each ~46-53 ms window (~82 %).
+
+**Verdict (third row of the agreed decision table): the synchronisation waits on
+SCN's own kernels while the GPU runs continuously.** The waiting is a
+*consequence*, not a root cause. Deleting syncs or pinning cores cannot remove
+the compute cost.
+
+### Who issues the long `cudaDeviceSynchronize`, and why it is not waste
+
+Joined `CUPTI_ACTIVITY_KIND_SYNCHRONIZATION` to `CUPTI_ACTIVITY_KIND_RUNTIME` on
+`correlationId` to attribute each sync to its host call and thread:
+
+| API | calls | total |
+|---|---|---|
+| `cudaDeviceSynchronize` | 4,583 | 25.203 s |
+| `cudaStreamSynchronize` | 7,524 | 14.530 s |
+| `cudaEventSynchronize` | 685 | 3.332 s |
+| `cuStreamSynchronize` | 519 | 0.950 s |
+| `cuStreamWaitEvent` | 13,056 | 0.012 s |
+| `cudaStreamWaitEvent` | 6,535 | 0.010 s |
+
+The longest device syncs (49-53 ms) are issued by **GStreamer queue threads** —
+`queue17:src`, `queue20:src`, `queue23:src`, `queue28:src` — not by the inference
+code. They are draining the whole device while SCN occupies it. So the large
+"sync time" is other work waiting on SCN, not SCN wasting time.
+
+Correction to an earlier reading of mine: **71.7 % is a share of accumulated CUDA
+API time, not a share of frame latency that is optimisable.** Sync waits can
+overlap GPU work in flight, and API time across threads can overlap. Likewise the
+SCN 31.8 % figure was a share of accumulated kernel duration, not of end-to-end
+latency.
+
+### What this closes
+
+| option | verdict |
+|---|---|
+| delete/reduce synchronisation | not applicable — the waits are on required SCN kernels |
+| pin SCN to a core | not applicable — the cost is GPU, not CPU contention |
+| Camera BEVPool/VTransform forward-shift | **much reduced value** — the GPU is at 96-99.9 % during SCN, so there is no idle capacity for camera work to fill; earlier justification for this idea is now contradicted |
+| multi-core / reuse rulebooks | not applicable — kernels are GPU-side, rebuilt per frame from that frame's voxel indices |
+| smaller `max_voxels` / coarser voxels / int8 | the only remaining levers, and they are accuracy/retraining decisions |
+| vendor-side spconv optimisation | the remaining engineering route, since `libspconv_q.so` is not ours |
+
+### Appendix: how the trace was obtained (tooling pitfalls worth keeping)
+
+- nsys exists only on the host (`/usr/local/bin/nsys`, 2023.2.4); the container
+  has none. The container's `/debug` is a shared rw mount, so the whole
+  `/opt/nvidia/nsight-systems/2023.2.4` tree was copied under
+  `/debug/tools/` and run as
+  `target-linux-tegra-armv8/nsys` from inside the container.
+- **The copy must be complete.** Without `host-linux-armv8/QdstrmImporter` the
+  player dies with `ld.so dl-tls.c _dl_allocate_tls_init assertion` and even
+  `/bin/true` cannot be traced.
+- **Report writing is asynchronous.** nsys writes a `.qdstrm` first and
+  `QdstrmImporter` converts it in the background; the `.nsys-rep` appears tens of
+  seconds later. Several attempts were aborted because the file was inspected too
+  early (0 bytes), when the conversion was simply still running.
+- Wrapping `docker exec` from the host does **not** work: injection only covers
+  the `docker exec` client, so the trace contains no CUDA data at all.
+- nsys 2023.2.4 has **no attach-to-running-process** option (`--attach-pid` is
+  newer); `nsys start/stop` sessions do not accept `--trace`.
+- Cleanup note: a broad `pkill -f qbaize_play.sh` also matches nsys's own
+  command line (it contains the script name) and kills the profiler.
+- Analysis path used: `nsys export --type sqlite`, then SQL over
+  `CUPTI_ACTIVITY_KIND_{KERNEL,RUNTIME,SYNCHRONIZATION}` joined on
+  `correlationId`.
