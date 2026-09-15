@@ -1016,75 +1016,109 @@ the Map head was waiting, SCN genuinely occupies its thread.
   created junk files and, in one round, produced the log under the name
   `mapod_dep_B_Tue` because `$(date +%m%d_%H%M)` was broken across a line.
 
-## 2026-09-15 SCN investigation: CPU single-core bound, and the library is opaque
+## 2026-09-15 SCN investigation: measured 45 ms, mechanism NOT fully attributed
 
 After the Map head was closed, SCN is the largest remaining item:
 `scn.spconv_forward` is 45 ms in both A2 and B, with host ≈ stream.
 
-### What the GPU probe showed
+### What was measured
 
 A 60 s playback with `tegrastats --interval 200` on the host (299 samples) plus
 the per-frame `MAPOD_SCN_STAGE` lines (39 frames):
 
 | measure | result |
 |---|---|
-| busiest CPU core | **p50 = 100 %, min = 100 %** across all 299 samples |
+| busiest CPU core | p50 = 100 %, min = 100 % across all 299 samples |
 | `GR3D_FREQ` | p25 44 %, p50 79 %, p75 99 % |
 | GPU ≥ 90 % | 134/299 samples (44.8 %) |
 | GPU < 10 % | 34/299 samples (11.4 %) |
 
-So the device is **not** compute-saturated: it is near-idle 11 % of the time,
-and one CPU core is pegged at 100 % throughout. The shape is a **CPU-side
-single-thread bottleneck with the GPU waiting on it**, not a GPU throughput
-limit. (Contrast with the Map head, where the thread was *waiting*; here it is
-*computing*.)
+### What those numbers do NOT establish
 
-### The library boundary matters more than any tuning option
+Three readings were drawn from this and then retracted after review — recorded
+here so they are not re-derived:
 
-`libspconv_q.so` is a **prebuilt third-party binary**, not part of this repo:
+1. **A pegged core does not mean SCN is doing CPU computation.** CUDA
+   synchronisation may spin-wait, occupying a core while still waiting on the
+   GPU, and our own timing reports wrap synchronisation calls. `host ≈ stream`
+   plus core saturation therefore **cannot separate** computation, submission and
+   busy-waiting. The statistic itself is also weak: "the busiest core at each
+   sample is at 100 %" does not mean it is the *same* core, and never attributes
+   it to the SCN thread.
+2. **11.4 % of samples showing low GPU does not mean 11.4 % of SCN is fillable
+   slack.** 200 ms sampling spans multiple stages — inter-frame waits, input
+   supply, post-processing. Without stage alignment this cannot be used to
+   predict any Camera-forward-shift gain.
+3. **Absence of parallel symbols does not prove multi-core is impossible.** The
+   honest statement is that no configurable internal parallelism was found in
+   the public interface; a symbol table cannot establish internal implementation
+   properties, nor rule out other vendor builds or interfaces.
+
+### The engineering boundary (this is what justifies pausing)
+
+`libspconv_q.so` is a prebuilt third-party binary, not part of this repo:
 
     /opt/qomolo/welldrive/third_party/third_party_binary/lib/libspconv_q.so   (1.86 MB, 2025-11-07)
     perception_q/CMakeLists.txt:11,133,148  -> links that absolute path
     no spconv sources anywhere under src/
 
 Deployment code only wraps it: `lidar-scn.cpp` calls `native_scn_->forward(stream)`
-as one opaque step. Rulebook construction and all 21 sparse convolutions live
-inside that .so.
+as one opaque step. Rulebook construction and all 21 sparse convolutions are
+inside that .so. No configurable internal parallel interface was found in its
+public symbols. Internal optimisation is limited by source and interface
+visibility — that constraint, not a proven root cause, is why this stops here.
 
-Symbol inspection of the .so (this is what settles the options):
+Two facts worth keeping for anyone who picks this up:
 
-- **No threading support at all.** No `thread`/`pool`/`parallel`/`omp`/`atomic`
-  symbols. Multi-core execution cannot be enabled from outside the library.
-- **Rulebook "reuse" is not cross-frame caching.** The library exposes
-  `create_submanifold_rulebook` / `create_spatially_rulebook` /
-  `create_inverse_rulebook` / `create_rulebook_reuse_manager`, but these are
-  per-layer encoding schemes (all `W` template instances, not external API).
-  Rulebook content derives from each frame's voxel indices, which change every
-  frame, so there is nothing to cache across frames. An earlier note claiming
-  reuse was a viable direction was **wrong and is retracted here**.
-- The rulebook *type* per layer is an **ONNX node attribute**, parsed at
-  `lidar-scn-onnx-parser.cpp:178-197` (`has_attribute(node, "rulebook")`). It is
-  therefore a property of the model, not of deployment code.
-- `InferTensor::set_dds_num_of_points_pointer(unsigned*)` exists and is callable
-  but is **never set** in this deployment, so the DDS path is inactive.
-- Full int8 kernels are present (`*_dds_i8i8i8`), so an int8 path exists in
-  principle; the profile currently asks for `precision: fp16`.
+- The per-layer rulebook *type* is an **ONNX node attribute**, read at
+  `lidar-scn-onnx-parser.cpp:178-197` (`has_attribute(node, "rulebook")`) — a
+  model property, not deployment code.
+- `InferTensor::set_dds_num_of_points_pointer(unsigned*)` is callable but never
+  set, so the DDS path is inactive. INT8 kernels exist in the library, but their
+  presence does not mean a profile change yields a valid INT8 model — that needs
+  matching quantisation support and calibration.
 
-### Therefore the real option set
+### Still open: can SCN be optimised at all?
 
-| option | verdict |
-|---|---|
-| multi-core SCN | **not possible** — library has no threading interface |
-| rulebook reuse across frames | **not applicable** — derived from per-frame voxel indices |
-| DDS pointer | callable, benefit unmeasured |
-| smaller `max_voxels` (currently 160000) / coarser voxel size | real lever, changes accuracy, needs validation |
-| int8 instead of fp16 | real lever, accuracy must be validated |
-| move SCN off the main thread | moves the wait, does not remove the saturation |
-| overlap camera work under SCN | the earlier Camera BEVPool/VTransform forward-shift idea |
+Deliberately left open, not closed. A claim that "rulebook can be reused across
+frames" was retracted (rulebook content derives from per-frame voxel indices),
+but that retraction does **not** generalise to "no reuse is possible". Candidate
+directions for a future round, none evaluated here:
 
-Anything that changes what the library computes (voxel counts, precision,
-rulebook type, backbone) is a model/accuracy change and belongs to a retraining
-decision, not to deployment-side tuning.
+- **Camera BEVPool/VTransform forward-shift** — the rationale is that work whose
+  inputs are already available gets submitted earlier, possibly shortening the
+  wait before fusion. It is *not* justified by the measured GPU idle fraction.
+  Note the likely conflict: the SCN call occupies the submitting thread, and
+  camera submission happens on that same thread.
+- **Map CUDA Graph** — already has a validated standalone benefit (5.28 → 3.68 ms,
+  identical outputs element-wise); its pipeline-level benefit is unmeasured.
+- **Working with the library supplier** on the SCN internals, since the .so is
+  not ours.
+- **Accuracy/speed trades** (voxel count, capacity, precision): a separate
+  speed-vs-accuracy evaluation. Note that reducing `max_voxels` only helps if the
+  limit is actually being hit, and coarsening voxels changes the model's input
+  distribution and geometry — neither is a casual deployment knob. DDS, INT8 and
+  truncated configurations are **not** to be enabled without that evaluation.
+
+### Report wording agreed for the final write-up
+
+> SCN forward costs about 45 ms under the current measurement conditions and is
+> one of the major stages. The same playback also showed high single-core
+> occupancy and fluctuating GPU utilisation, but the present data cannot
+> separate the shares of SCN-internal CPU work, CUDA busy-waiting, submission
+> overhead and device execution.
+>
+> The current SCN implementation depends on a prebuilt third-party library; no
+> directly configurable internal parallel interface was found, so internal
+> optimisation is limited by source and interface visibility. This round stops
+> further diagnosis and modification, without claiming the deployment-side
+> optimisation space is exhausted.
+>
+> If work continues, the candidates to evaluate separately are the Camera BEV
+> forward-shift, the Map CUDA Graph (whose standalone benefit is already
+> validated), or collaboration with the library supplier. Voxel, capacity and
+> quantisation changes require their own speed-vs-accuracy evaluation. This
+> round enables no unvalidated DDS, INT8 or truncated configuration.
 
 ### Relevant files
 
