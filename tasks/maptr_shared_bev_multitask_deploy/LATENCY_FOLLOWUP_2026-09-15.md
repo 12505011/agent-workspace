@@ -261,3 +261,43 @@ explains CUDA Graph capture, fixed context/buffer requirements and multi-stream
 resource contention. Use it for these principles; verify concrete APIs and
 capture behavior against the installed TensorRT 8.5.2.2. No TensorRT/JetPack
 upgrade is proposed by this note.
+
+## User-authorized Orin load cleanup, 2026-09-15
+
+After the analysis, the user explicitly requested stopping unnecessary load
+so they could rerun playback themselves. At 00:31-00:32 UTC, `qpilot-orin`
+still consumed 583.45% CPU. Supervisor status and recent logs confirmed that
+six programs repeatedly exited with status 1 and restarted every roughly
+1-2 seconds. Their logs reported missing `/debug/subway/install` setup files
+and missing ROS packages, including `img_postprocess`, `alarm_agent`,
+`ground_filter`, `ground_filter_livox`, `innovusion`, and `lidar_undistort`.
+
+Stopped only these six Supervisor programs using the existing supervisor:
+
+```bash
+docker exec qpilot-orin supervisorctl stop \
+  img_postprocess launch_alarmagent launch_groundfilter \
+  launch_groundfilterlivox launch_iv_driver launch_lidarundistort
+```
+
+The command succeeded and all six remained `STOPPED` on a subsequent check.
+No container was stopped/deleted. The existing `qp3_105to106` program and
+previously exited `launch_livox_driver` were left unchanged. All other
+containers, SSH sessions, Docker, editor processes, model files, profiles,
+playback scripts and autostart configuration were preserved. No new playback
+was launched by the agent.
+
+At 00:33 UTC, two post-cleanup Docker samples showed `qpilot-orin` at 0.03%
+and 0.02% CPU and `baize_ruicao-wviz-1` at 0.00-0.01%. The last two of three
+one-second tegrastats samples showed 0-2% utilization on each CPU core and
+0% GPU utilization. This verifies removal of the competing restart-loop CPU
+load, not a measured MapOD inference speedup. Playback latency after cleanup
+remains for the user to measure.
+
+This is a temporary operational stop, not a repair of the missing packages.
+Restarting Supervisor/container can launch the failed services again because
+their configuration was deliberately not changed. For a future restoration,
+first repair the missing installation or confirm that restarting is intended,
+then use the same six explicit program names with `supervisorctl start`.
+Do not use `start all`, global process killing, or container deletion for
+this cleanup.

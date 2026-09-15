@@ -739,3 +739,10 @@ the latest inspected generated profile disables detailed timing, so no new
 per-stage parallel performance claim is made. The most concrete next runtime
 change is a MapOD-private point-association path that returns only indices,
 followed by static Map CUDA Graph evaluation and measured SCN optimization.
+
+The follow-up also records the user-authorized stop of six failing Supervisor
+programs in `qpilot-orin`: repeated missing-package startup failures accounted
+for approximately six CPU cores. After the targeted stop, that container used
+0.02-0.03% CPU and final host samples showed 0-2% per core, GPU 0%. Containers,
+models, profiles and launchers were preserved; new playback measurements are
+still pending.
