@@ -28,9 +28,12 @@
   `00ddd95a` 将实时链路收敛为 `camera_3 → ROI → 具名 YOLO → 绿色 mask 叠加图`，
   不进行全图回填、BEV/距离/zone 投影、点云验证或 3D marker 发布。原有位置估计实现
   仍保留在源文件中，尚未删除，供后续恢复使用。
-- `93a6f2f1`/`5bf17ec0` 增加可选 `debug_base_box`：profile 的四个 `[x, y, z]`
-  base_footprint 角点按边界顺序组成地面矩形；启用后模块加载 camera3 标定，将四条边投影
+- `93a6f2f1`/`5bf17ec0` 增加可选 `debug_base_box`：profile 的四个 `[x, y]`
+  base_footprint 角点与统一 `z` 按边界顺序组成地面矩形；启用后模块加载 camera3 标定，将四条边投影
   到同一张 2D debug 图（红色）。当前 profile 已填入现场四点；关闭时 mask 链路不依赖标定。
+- `11d9120f` 同时发布该闭合矩形的 5 个 `Vector3f` 点到
+  `qpilot/perception/trailer_debug_base_rectangle`；qfile ROS router 将其映射为
+  `MarkerArray`，用于 base_footprint 下的 3D/BEV 可视化。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
