@@ -9,21 +9,21 @@
 
 代码仓库：`/data/baize/baize-welldriver/src/perception_q`
 
-- 当前代码分支：`qp-49056-tug-self-loading-position-function`
+- 当前代码分支：`qp-49056-tug-self-loading-position-function-5.6`
 - 新增源文件：`src/unhook_area_detection/trailer_mask_bev.cpp`
 - 相关构建文件：`src/unhook_area_detection/CMakeLists.txt`
 - 相关运行时实现：`src/dl_runtime/dl_yolo/dl_runtime.cpp`
 
 ## Current state
 
-- `trailer_mask_bev.cpp` 已存在，目前为 Git 未跟踪文件（3155 行）。
-- `src/unhook_area_detection/CMakeLists.txt` 已有本地修改：将源文件从
-  `file(GLOB ./*.cpp)` 改为显式列出 `unhook_area_detection.cpp` 和
-  `trailer_mask_bev.cpp`，并将两者编入同一
-  `unhook_area_detection` 共享库。
-- `src/dl_runtime/dl_yolo/dl_runtime.cpp` 也存在本地修改；
-  `trailer_mask_bev.cpp` 声明并调用其具名掩码推理入口
-  `RunNamedYoloModelOnBgrMatsWithMasks`。
+- 已迁移到 5.6 分支，并形成两个本地提交：`dd31c9fe`（主模块）与
+  `7541170b`（具名补充 YOLO 推理接口）。
+- `unhook_area_detection.cpp` 通过 include 编入 `trailer_mask_bev.cpp`，再以单个
+  Poco manifest 导出 `UnhookAreaDetection` 和 `TrailerMaskBevNode`；构建产物只有
+  `libperception_q_unhook_area_detection.so`。
+- `dl_runtime.cpp` 支持配置 `supplemental_only: true` 的 YOLO 模型：模型仍加载，但
+  不订阅相机 topic、也不参加常规调度；BEV 模块通过
+  `RunNamedYoloModelOnBgrMatsWithMasks("dl_yolo_trailer_mask", ...)` 精确调用它。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
@@ -32,14 +32,14 @@
   `trailer_mask_bev`。
 - 配置首先从 `perception_q.trailer_mask_bev` 读取；若不存在，
   兼容读取 `perception_q.unhook_area_detection.trailer_mask_bev`。
-- 源码将 `TrailerMaskBevNode` 通过 Poco manifest 导出，与
-  `unhook_area_detection.cpp` 作为独立翻译单元共用一个动态库。
+- 源码通过由 `unhook_area_detection.cpp` 统一定义的 Poco manifest 导出两个模块类，
+  避免把同一 CPP include 后再独立编译造成重复定义。
 - 实现包含语义掩码到 BEV 投影、bbox 中心投影、远程裁剪推理、
   点云验证以及多种调试输出路径。
 
 ## Commands and validation
 
-- 2026-09-16：已通过 `git status`、`git diff` 和源码静态检查核实上述现状。
+- 2026-09-16：已通过 `git diff --check`、接口调用点和 Git 提交检查核实迁移结果。
 - 未运行构建、单元测试或实车/数据回放验证。
 
 ## 2026-09-16 logic review
@@ -74,8 +74,7 @@
 
 ## Open questions / handoff
 
-- 需要后续确认 `trailer_mask_bev.cpp` 与 `dl_runtime.cpp` 的最终接口契约，
-  并完成目标库构建验证。
+- 需要在目标环境完成 `perception_q`/目标库构建验证。
 - 需要确认实际 profile 中采用顶层还是嵌套的
   `trailer_mask_bev` 配置路径。
 - 运行该管线前必须确认 `dl_runtime` 与本模块处于同一进程，且名为
