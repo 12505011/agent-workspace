@@ -34,6 +34,9 @@
 - `11d9120f` 同时发布该闭合矩形的 5 个 `Vector3f` 点到
   `qpilot/perception/trailer_debug_base_rectangle`；qfile ROS router 将其映射为
   `MarkerArray`，用于 base_footprint 下的 3D/BEV 可视化。
+- `838de540` 将 `trailer_bbox_center_debug_2d` 改为发布完整 camera3 图：绿色 mask
+  仅回填到模型 ROI，红色 base 矩形直接按全图像素坐标叠加。profile 的
+  `center_debug_2d_max_width: 0` 表示保留原始分辨率。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
