@@ -24,6 +24,10 @@
 - `dl_runtime.cpp` 支持配置 `supplemental_only: true` 的 YOLO 模型：模型仍加载，但
   不订阅相机 topic、也不参加常规调度；BEV 模块通过
   `RunNamedYoloModelOnBgrMatsWithMasks("dl_yolo_trailer_mask", ...)` 精确调用它。
+- 当前 2D 验证阶段仅保留 `qpilot/perception/trailer_bbox_center_debug_2d`：代码提交
+  `00ddd95a` 将实时链路收敛为 `camera_3 → ROI → 具名 YOLO → 绿色 mask 叠加图`，
+  不进行全图回填、BEV/距离/zone 投影、点云验证或 3D marker 发布。原有位置估计实现
+  仍保留在源文件中，尚未删除，供后续恢复使用。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
