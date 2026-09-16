@@ -9,15 +9,15 @@
 
 代码仓库：`/data/baize/baize-welldriver/src/perception_q`
 
-- 当前代码分支：`qp-49056-tug-self-loading-position-function-5.6`
+- 当前代码分支：`qp-49056-tug-self-loading-position-function-5.7`
 - 新增源文件：`src/unhook_area_detection/trailer_mask_bev.cpp`
 - 相关构建文件：`src/unhook_area_detection/CMakeLists.txt`
 - 相关运行时实现：`src/dl_runtime/dl_yolo/dl_runtime.cpp`
 
 ## Current state
 
-- 已迁移到 5.6 分支，并形成两个本地提交：`dd31c9fe`（主模块）与
-  `7541170b`（具名补充 YOLO 推理接口）。
+- 已迁移到 5.7 分支，并形成两个本地提交：`7c2b84f9`（主模块）与
+  `47eb2868`（具名补充 YOLO 推理接口）。
 - `unhook_area_detection.cpp` 通过 include 编入 `trailer_mask_bev.cpp`，再以单个
   Poco manifest 导出 `UnhookAreaDetection` 和 `TrailerMaskBevNode`；构建产物只有
   `libperception_q_unhook_area_detection.so`。
