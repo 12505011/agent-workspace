@@ -28,15 +28,14 @@
   `00ddd95a` 将实时链路收敛为 `camera_3 → ROI → 具名 YOLO → 绿色 mask 叠加图`，
   不进行全图回填、BEV/距离/zone 投影、点云验证或 3D marker 发布。原有位置估计实现
   仍保留在源文件中，尚未删除，供后续恢复使用。
-- `93a6f2f1`/`5bf17ec0` 增加可选 `debug_base_box`：profile 的四个 `[x, y]`
-  base_footprint 角点与统一 `z` 按边界顺序组成地面矩形；启用后模块加载 camera3 标定，将四条边投影
-  到同一张 2D debug 图（红色）。当前 profile 已填入现场四点；关闭时 mask 链路不依赖标定。
-- `11d9120f` 同时发布该闭合矩形的 5 个 `Vector3f` 点到
-  `qpilot/perception/trailer_debug_base_rectangle`；qfile ROS router 将其映射为
-  `MarkerArray`，用于 base_footprint 下的 3D/BEV 可视化。
-- `838de540` 将 `trailer_bbox_center_debug_2d` 改为发布完整 camera3 图：绿色 mask
-  仅回填到模型 ROI，红色 base 矩形直接按全图像素坐标叠加。profile 的
-  `center_debug_2d_max_width: 0` 表示保留原始分辨率。
+- 曾试验 `debug_base_box` 的 base_footprint 矩形投影和 MarkerArray 发布，但相机畸变/
+  标定误差使其暂不适合作为当前链路；实现记录保留在 Git 历史供后续参考。
+- 2026-09-17 起当前有效链路回到 ROI 图像域：输出为 300×300（按 profile 可调）推理裁剪图，
+  绿色为目标 class mask，不再回填整张相机图或进行 base 投影。
+- ROI 由 `mask_zone_detection.zone_count`（当前 10）等宽竖向切分。profile 的
+  `selected_zones` 可填写任意不重复的 0-based 编号组合；选中区域的掩膜像素总数达到
+  `min_pixels` 时，在 `qpilot/perception/trailer_mask_zone_result` 发布整数 `1`，否则 `0`。
+  该话题尚未接入 `unhook_area_result` 或 `unhook_area_detection.cpp`。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
@@ -53,6 +52,7 @@
 ## Commands and validation
 
 - 2026-09-16：已通过 `git diff --check`、接口调用点和 Git 提交检查核实迁移结果。
+- 2026-09-17：ROI 分区变更通过 `git diff --check`，并用 `yq` 成功解析 profile 与 qfile YAML。
 - 未运行构建、单元测试或实车/数据回放验证。
 
 ## 2026-09-16 logic review
