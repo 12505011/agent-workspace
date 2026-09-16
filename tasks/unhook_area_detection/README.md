@@ -35,6 +35,7 @@
 - ROI 由 `mask_zone_detection.zone_count`（当前 10）等宽竖向切分。profile 的
   `selected_zones` 可填写任意不重复的 0-based 编号组合；选中区域的掩膜像素总数达到
   `min_pixels` 时，在 `qpilot/perception/trailer_mask_zone_result` 发布整数 `1`，否则 `0`。
+  `trailer_bbox_center_debug_2d` 每格底部直接绘制对应编号；黄色代表选中，灰色代表未选中。
   该话题尚未接入 `unhook_area_result` 或 `unhook_area_detection.cpp`。
 - 尚未在本任务记录中确认编译或测试结果。
 
