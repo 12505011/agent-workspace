@@ -36,7 +36,11 @@
   `selected_zones` 可填写任意不重复的 0-based 编号组合；选中区域的掩膜像素总数达到
   `min_pixels` 时，在 `qpilot/perception/trailer_mask_zone_result` 发布整数 `1`，否则 `0`。
   `trailer_bbox_center_debug_2d` 每格底部直接绘制对应编号；黄色代表选中，灰色代表未选中。
-  该话题尚未接入 `unhook_area_result` 或 `unhook_area_detection.cpp`。
+  该话题的使用由 `unhook_area_detection.cpp` 控制：收到区域后，点云命中即立即输出
+  `unhook_area_result=1`；只有连续空点云帧达到 `detection_frame_count` 才发布一次
+  `trailer_mask_zone_request`。相机模块在下一帧图像上推理一次，回传
+  `trailer_mask_zone_result`，其 0/1 即为最终 `unhook_area_result`。默认等待 1500 ms，
+  超时或推理失败按 0 收口，防止区域检测状态卡住。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
