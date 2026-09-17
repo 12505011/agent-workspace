@@ -41,6 +41,19 @@
   `trailer_mask_zone_request`。相机模块在下一帧图像上推理一次，回传
   `trailer_mask_zone_result`，其 0/1 即为最终 `unhook_area_result`。默认等待 1500 ms，
   超时或推理失败按 0 收口，防止区域检测状态卡住。
+- 当前相机路径是按需而非实时：`TrailerMaskBevNode` 订阅
+  `qpilot/perception/trailer_mask_zone_request`，仅在收到非零请求后消费下一帧
+  camera3 图像并执行一次具名 YOLO 推理。请求已挂起时会合并重复请求；推理失败也会回传
+  `trailer_mask_zone_result=0`，避免 `UnhookAreaDetection` 一直等待。
+- 点云 ROI 是全局 `unhook_area` 经同步 odometry 转换至 `base_footprint` 后的四边形，
+  结合 z 范围计数；它不是图像的固定 ROI。相机当前仍检测 profile 指定的固定图像 ROI/
+  竖向分区，尚未把 `unhook_area` 投影至图像。
+- 已形成代码提交：`b15b86fd`（分区检测）、`718e3c7d`（图像编号）与
+  `15aec3bc`（点云优先、相机兜底按需触发）；profile 对应提交为
+  `0c513731a`、`4d4852351`、`1f3c41d83`。
+- 本地存在未提交的临时源码测试开关 `force_pointcloud_empty_`（默认 `false`），
+  位于 `unhook_area_detection.h`，且刻意不暴露到 profile；设为 `true` 时跳过实际 ROI
+  点云计数，用于回放相机兜底路径。
 - 尚未在本任务记录中确认编译或测试结果。
 
 ## Verified facts
@@ -58,6 +71,8 @@
 
 - 2026-09-16：已通过 `git diff --check`、接口调用点和 Git 提交检查核实迁移结果。
 - 2026-09-17：ROI 分区变更通过 `git diff --check`，并用 `yq` 成功解析 profile 与 qfile YAML。
+- 2026-09-17：点云优先/相机按需兜底和临时空点云开关均通过 `git diff --check`；相关
+  profile YAML 也已用 `yq` 解析。未运行构建或回放。
 - 未运行构建、单元测试或实车/数据回放验证。
 
 ## 2026-09-16 logic review
@@ -95,6 +110,8 @@
 - 需要在目标环境完成 `perception_q`/目标库构建验证。
 - 需要确认实际 profile 中采用顶层还是嵌套的
   `trailer_mask_bev` 配置路径。
+- 播包脚本默认加载 `/etc/qomolo/profile/...`，而非源码 profile；验证前需确认新 profile
+  已安装到实际加载路径（或调整脚本）。
 - 运行该管线前必须确认 `dl_runtime` 与本模块处于同一进程，且名为
   `dl_yolo_trailer_mask` 的 YOLO handler 已完成加载；否则全局 live-node 指针为空或
   找不到具名模型，worker 会持续失败。
