@@ -428,6 +428,25 @@ not by itself evidence of a leak or imbalance. Do not raise per-rank batch to
 previous bs4 variant was OOM-prone. The 4-epoch run's first validation points
 are epochs 2 and 4.
 
+### Runtime comparison against centred x30/y15 v16
+
+The new run is not missing data: both the old v16 PKL and the new PKL contain
+28,130 train frames; both have mean 3.900 LiDAR sweeps/frame (range 0--4), and
+an inspected non-initial frame had four existing sweep files in each PKL. Both
+runs use 1,759 iterations/epoch, batch 2/rank, two workers/rank, six cameras,
+four sweeps, FP16, gradient accumulation and a six-layer Map decoder. All OD,
+depth and Map losses are nonzero in the new log.
+
+The observed steady iteration time is nevertheless about 0.51--0.59 s in the
+new run versus about 1.06--1.11 s in the older v16 run. One verified data-side
+difference is that the forward x0--54/y+-20 ROI contains fewer vector GT
+instances than the centred x+-30/y+-15 ROI: mean 10.129 versus 14.002 per
+frame (median 9 versus 13; 95th percentile 22 versus 26). This reduces
+MapTR matching/loss work and plausibly explains part of the faster iteration.
+It does not prove the whole roughly 2x difference: the new Map feature grid is
+actually larger (68x90=6120 cells versus 50x100=5000). Do not interpret this
+as an architecture-only speed gain without a controlled same-ROI benchmark.
+
 ## Current decisions
 
 - 2026-09-09 decoder-GN G24 已从同目录 `epoch_2.pth` 配置为真正的
