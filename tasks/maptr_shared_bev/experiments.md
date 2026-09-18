@@ -501,3 +501,22 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
 - 新的七类训练必须同时满足四项：converter 能抽取 Westwell `line_token` 形式的
   stop line、离线数据集将其映射为 label 6、Map head/coder 输出 7 类、train/val
   PKL 与验证 JSON 均重新生成。只改 config 会得到无 GT 的空类别。
+
+## Forward-ROI smoke-run configuration audit (2026-09-18)
+
+- Current remote smoke run `joint_6layer_gn_map_x0_54_yneg20_20_..._4e_bs2_acc2_w4`
+  used the server's 24e base configuration, not the local one with the same
+  filename. Its effective optimizer contract was AdamW base LR `2e-4`, camera
+  backbone multiplier `0.3` (`6e-5`), Map head multiplier `3.0` (`6e-4`),
+  `cumulative_iters=2`, and a `1000`-micro-iteration warmup (=500 optimizer
+  updates). This is intentional LR-only-ablation behaviour and matches the
+  run-directory name; the four-epoch child did not override it.
+- The server base also set checkpoint/evaluation interval 4. Since the child
+  did not override those fields, epoch 2 neither saved nor evaluated; epoch 4
+  was the only validation/checkpoint point. A future short-run child must
+  explicitly set both intervals if intermediate validation is required.
+- MD5 audit: child config matched local exactly. `maptr_train_torchrun.py`,
+  `mmdet3d/apis/train.py`, `task_evaluation.py`, offline-map dataset,
+  `bevfusion_maptr.py`, and `maptrv2_head.py` also matched. The only audited
+  mismatch was the inherited 24e base config, so local and 4090_8 are not
+  configuration-identical even though the core training code is identical.
