@@ -389,6 +389,45 @@ PyTorch reserved/cache、CUDA/NCCL、spconv 和自定义算子 workspace 占用�
 epoch 4 双任务评估。若需要进一步降显存，可考虑 batch 1 + 累计 4 保持全局
 batch 32，但会改变每卡 BN 统计，不属于本次 LR-only 消融。
 
+## Official nuScenes forward-map ROI, four-epoch smoke run (2026-09-18)
+
+The selected official-nuScenes joint OD+Map PKLs are:
+
+```
+/storage/disks/d0/lelin/maptr/data/
+  nuscenes_official_x0_54_yneg20_20_map_infos_temporal_{train,val}.pkl
+```
+
+They were produced for the Map contract `x=[0,54]`, `y=[-20,20]`,
+`z=[-10,10]`. They contain paired official nuScenes object GT and offline
+four-class map GT; this is a same-sample joint training run, not alternating
+OD/Map loaders.
+
+The matching four-epoch config is
+`configs/maptrv2/nuscenes/bevfusion_maptr_shared_bev_nuscenes_joint_6layer_gn_x0_54_yneg20_20_4e.py`.
+It inherits the established official-nuScenes six-layer GroupNorm design and
+keeps the optimizer/loss policy: 6 cameras, official 10-class OD over the
+inherited +/-54 m object range, four Map classes, `samples_per_gpu=2`,
+`cumulative_iters=2`, `workers_per_gpu=4`, 24-epoch schedule settings except
+for `total_epochs=runner.max_epochs=4`, and evaluation/checkpoint interval 2.
+The Map head uses `bev_h=68`, `bev_w=90`; its logical coder/GT/crop range is
+the exact `x=[0,54], y=[-20,20]` PKL contract. The 68-row shared 0.6 m crop
+rounds at the lateral boundary; this is a feature-grid boundary effect, not a
+change to the map annotation or decoded coordinate range.
+
+Initial eight-rank training observation from `nvidia-smi`:
+
+- every RTX 4090 D rank used 12,436-13,678 MiB of 24,564 MiB;
+- utilization was 56-80%, and all ranks were in P0;
+- effective global batch is `2 samples/rank * 8 ranks * 2 accumulation = 32`.
+
+This is a healthy no-OOM state. The roughly 1.2 GiB rank-to-rank variation is
+consistent with sparse point/valid-GT variation and allocator caching; it is
+not by itself evidence of a leak or imbalance. Do not raise per-rank batch to
+4 based only on this headroom: multiview+sparse peak allocation can vary and a
+previous bs4 variant was OOM-prone. The 4-epoch run's first validation points
+are epochs 2 and 4.
+
 ## Current decisions
 
 - 2026-09-09 decoder-GN G24 已从同目录 `epoch_2.pth` 配置为真正的
