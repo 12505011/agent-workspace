@@ -613,3 +613,23 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
 - The currently parsed joint config still uses `Anchor3DHead`. A TransFusion
   experiment requires a separate explicit config and must not be described as
   ready merely because the two machines are checksum-identical.
+
+### Corrected forward-ROI 24-epoch controlled run (2026-09-20)
+
+- Config `configs/maptrv2/nuscenes/bevfusion_maptr_shared_bev_nuscenes_joint_6layer_gn_forward0_54_left20_24e.py`
+  uses `nuscenes_official_forward0_54_left20_map_infos_temporal_{train,val}.pkl`.
+  Its Map contract is native nuScenes LiDAR `x=[-20,20], y=[0,54]`, grid
+  `bev_h=90, bev_w=68`; object range remains the inherited +/-54 m square.
+- This is intentionally a controlled v16 continuation: Anchor3DHead, R50,
+  single-frame points, `with_velocity=False`, no CBGS, six Map decoder layers,
+  batch 2/rank with accumulation 2, base/OD LR `2e-4`, camera LR `6e-5`, Map
+  head LR `6e-4`, and 500-update warmup are unchanged. A briefly prepared
+  TransFusion/4-sweep/velocity/CBGS variant was removed before training at the
+  user's request; it must not be confused with this run.
+- The run trains 24 epochs, checkpoints every two epochs, and evaluates only at
+  epochs 16/18/20/22/24 (`evaluation.start=16`, `interval=2`). On 4090_8 the
+  complete model builds as Anchor3DHead, the plain joint dataset builds with
+  28,130 samples, both PKLs are present/nonempty, and config assertions pass.
+  The new work directory was confirmed absent before launch. Delivery commits:
+  `099b9d8` (final controlled config), after the intermediate TransFusion config
+  was retired.
