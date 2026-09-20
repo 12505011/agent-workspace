@@ -581,3 +581,10 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   pushed to `bev_3dod_maptr_shared_bev_mmdet3d` as `9e8e7d7`; that branch had
   already deleted the nuScenes-only preparation shell script, so its deletion
   was intentionally preserved. Eight tests pass on both branch versions.
+- The 4090_8 training snapshot at `/storage/disks/d0/lelin/maptr` is not a Git
+  worktree, so pushing GitLab does not update it. After its old converter
+  rejected `--point-cloud-range-frame`, the five conversion/test files from
+  `ec31d19` were copied there directly. The previous files are recoverable at
+  `.codex_backup_ec31d19_20260920/`; converter MD5 matched local
+  (`0ad20066b73b71bb866f2eb461eed641`), remote help exposed the new option, and
+  all six semantic-range tests passed in the remote `maptr` environment.
