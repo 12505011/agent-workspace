@@ -588,3 +588,28 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   `.codex_backup_ec31d19_20260920/`; converter MD5 matched local
   (`0ad20066b73b71bb866f2eb461eed641`), remote help exposed the new option, and
   all six semantic-range tests passed in the remote `maptr` environment.
+
+### Local/4090_8 nuScenes training parity audit (2026-09-20)
+
+- A checksum dry-run found the complete `mmdet3d/` model/training implementation
+  identical between local `bev_3dod_maptr_shared_bev_nuscenes@ec31d19` and the
+  non-Git 4090_8 snapshot. The only model-config mismatch was the inherited
+  `bevfusion_maptr_shared_bev_nuscenes_joint_6layer_gn_24e.py`: local was v15,
+  while 4090_8 intentionally retained the v16 LR-only ablation.
+- Local was aligned to the verified server v16 contract. Both sides now have
+  MD5 `914c651eb060563a337feb17432ffa6f` for the 24e config and
+  `99bde6612557bc2a69075f53edddb522` for its launcher: base/OD LR `2e-4`, camera
+  backbone peak LR `6e-5`, Map-head peak LR `6e-4`, 1000 micro-iteration warmup
+  (500 optimizer updates), two workers/rank, and checkpoint/evaluation every
+  four epochs. Config parsing and launcher shell syntax passed locally.
+- Do **not** restart the old
+  `...gn_x0_54_yneg20_20_4e.py` as the intended forward-ROI experiment. Although
+  its local/server MD5 matches (`14e74316e72c47b0cab46b923371c691`), it encodes
+  the disproven native-LiDAR range `[0,-20,-10,54,20,10]`, grid `68x90`, and
+  references the old `nuscenes_official_x0_54_yneg20_20` PKLs. The newly
+  converted semantic dataset prefix on 4090_8 is
+  `nuscenes_official_forward0_54_left20`; its matching training config must use
+  resolved native range `x=[-20,20], y=[0,54]` and Map grid `90x68`.
+- The currently parsed joint config still uses `Anchor3DHead`. A TransFusion
+  experiment requires a separate explicit config and must not be described as
+  ready merely because the two machines are checksum-identical.
