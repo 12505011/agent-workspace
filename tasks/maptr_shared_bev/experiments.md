@@ -520,3 +520,32 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   `bevfusion_maptr.py`, and `maptrv2_head.py` also matched. The only audited
   mismatch was the inherited 24e base config, so local and 4090_8 are not
   configuration-identical even though the core training code is identical.
+
+## nuScenes LiDAR-axis correction (2026-09-20)
+
+- The official nuScenes PKLs remain in the native `LIDAR_TOP` frame. A real
+  training sample has `lidar2ego` mapping LiDAR `+Y` almost exactly to ego
+  `+X` (vehicle forward), and LiDAR `+X` almost exactly to ego `-Y` (vehicle
+  right). Converter `--point-cloud-range` values therefore use **LiDAR axes**:
+  x is lateral/right and y is longitudinal/forward; they are not semantic
+  vehicle `(forward, left)` arguments.
+- The converter correctly maps `(x_min,y_min,x_max,y_max)` to patch
+  `(width,height)` and does not swap stored coordinate columns. The error was
+  the range supplied under the wrong axis assumption. The old
+  `[-30,-15,30,15]` Map ROI is lateral +/-30 m and longitudinal +/-15 m, not
+  the intended longitudinal +/-30 m and lateral +/-15 m. The intended centred
+  ROI is `x=[-15,15], y=[-30,30]` in the nuScenes LiDAR frame.
+- Likewise, the smoke-run range `x=[0,54], y=[-20,20]` selects one lateral
+  side and only +/-20 m longitudinally. The intended forward-only contract is
+  `x=[-20,20], y=[0,54]`. Its Map grid/crop orientation must be
+  `bev_h=90, bev_w=68` (y rows, x columns), rather than `68x90`.
+- This affects Map PKL generation, Map head/coder/assigner range, shared-BEV
+  crop, positional encoding and evaluation GT together. It does not invalidate
+  OD training over the symmetric +/-54 m range. Historical Map metrics remain
+  internally valid for their rotated ROI, but must not be described as the
+  intended forward/longitudinal coverage; the 4-epoch `x0_54` smoke result is
+  not a valid forward-ROI result.
+- Evidence: PKL metadata is internally consistent; the first sample's
+  `lidar2ego` rotation maps LiDAR X to ego `[~0,-1,~0]` and LiDAR Y to ego
+  `[~1,~0,~0]`. Across 30,905 sampled centerline segments, 72.8% of segment
+  length is y-dominant, independently matching the forward=LiDAR-Y contract.
