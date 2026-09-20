@@ -575,3 +575,9 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   On 2026-09-20, eight converter tests passed together with Python compilation
   and shell syntax validation. No full dataset conversion was run locally
   because the local `data/nuscenes` directory is empty.
+- Delivery: the complete semantic conversion plus automatic BEV audit image
+  was pushed to `bev_3dod_maptr_shared_bev_nuscenes` as `ec31d19`. The same
+  converter, merged-dataset guard, audit image and tests were transplanted and
+  pushed to `bev_3dod_maptr_shared_bev_mmdet3d` as `9e8e7d7`; that branch had
+  already deleted the nuScenes-only preparation shell script, so its deletion
+  was intentionally preserved. Eight tests pass on both branch versions.
