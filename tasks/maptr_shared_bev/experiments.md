@@ -549,3 +549,29 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   `lidar2ego` rotation maps LiDAR X to ego `[~0,-1,~0]` and LiDAR Y to ego
   `[~1,~0,~0]`. Across 30,905 sampled centerline segments, 72.8% of segment
   length is y-dominant, independently matching the forward=LiDAR-Y contract.
+
+### Vehicle-semantic range input and BEV audit image
+
+- `westwell_joint_converter.py` now accepts
+  `--point-cloud-range-frame vehicle`. With this mode, the six values retain
+  the Westwell-facing contract `(forward_min, left_min, z_min, forward_max,
+  left_max, z_max)`; the converter reads `lidar2ego`, infers the signed native
+  LiDAR XY permutation, and stores the resolved native range in the PKL.
+  `native-lidar` remains the default so historical commands do not silently
+  change meaning.
+- Axis inference refuses calibrations that are not close to an axis-aligned
+  XY permutation (minimum dominant alignment 0.90). This prevents an
+  ambiguous rotated dataset from being converted by guesswork. The metadata
+  records the vehicle range, native range, signed axis mapping, calibration
+  quaternion and LiDAR channel used.
+- Every map-enabled output now writes a sibling `*_bev_check.png` containing
+  one informative Map GT sample, the native LiDAR range, native axes, vehicle
+  forward/left arrows and class legend. The merged nuScenes2 converter writes
+  the same final audit images and rejects shards resolving to inconsistent
+  native ranges.
+- Unit coverage verifies identity/x-forward Westwell data, official nuScenes
+  y-forward/right-x data (including lateral sign inversion), legacy native
+  mode, rejection of a 45-degree ambiguous calibration, and PNG generation.
+  On 2026-09-20, eight converter tests passed together with Python compilation
+  and shell syntax validation. No full dataset conversion was run locally
+  because the local `data/nuscenes` directory is empty.
