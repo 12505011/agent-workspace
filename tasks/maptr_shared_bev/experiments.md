@@ -633,3 +633,10 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   The new work directory was confirmed absent before launch. Delivery commits:
   `099b9d8` (final controlled config), after the intermediate TransFusion config
   was retired.
+- The canonical launcher is
+  `tools/3dod_maptr/train_shared_bev_nuscenes_joint.sh`. Commit `ef07ba6`
+  makes it append the exact command, timestamps, stdout/stderr, and final exit
+  status to the run's `train.log` while preserving live terminal output and the
+  original `torchrun` exit code. The script was synced to 4090_8 and passed
+  `bash -n` there. Start it from the repository root with
+  `bash tools/3dod_maptr/train_shared_bev_nuscenes_joint.sh`.
