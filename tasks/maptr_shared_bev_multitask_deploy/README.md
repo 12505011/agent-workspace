@@ -1250,3 +1250,28 @@ frame's voxel indices, which can change frame to frame.
 - Analysis path used: `nsys export --type sqlite`, then SQL over
   `CUPTI_ACTIVITY_KIND_{KERNEL,RUNTIME,SYNCHRONIZATION}` joined on
   `correlationId`.
+
+## Runtime branch moved to current master (2026-09-21)
+
+`release-test-mapod-share-model-5.7` was rebuilt on the then-current
+`origin/master` commit `03c4f08e` by cherry-picking only the ten MapOD task
+commits, rather than the unrelated 5.7 release history. The resulting branch
+tip is `b0793959`; it was force-pushed with `--force-with-lease`.
+
+The only cherry-pick conflicts were in `src/lidar_obj_det/CMakeLists.txt` and
+`src/lidar_obj_det/lidar_obj_det_node.cpp`. Resolution retained master's
+self-trailer sources and `narrow_space_line` publisher together with the MapOD
+sources and existing `maptr_pointcloud` output contract. A local backup ref
+`backup/release-test-mapod-share-model-5.7-pre-master-20260921` preserves the
+old `32b346f4` history.
+
+The Orin checkout `/debug/src/perception_q` was clean at old commit `4d5967ee`
+before update. It was updated from a verified incremental Git bundle to the
+same `b0793959` tip, and its remote-tracking ref was aligned. The previous Orin
+HEAD is retained as
+`backup/release-test-mapod-share-model-5.7-pre-master-orin-20260921`.
+
+Per user direction, no local or Orin build was run for this migration. The
+existing `mapod_parallel_schedule_test.py` has two stale source-string
+assertions after the earlier timing-experiment retirement; its failures were
+observed but were not changed or treated as build validation.
