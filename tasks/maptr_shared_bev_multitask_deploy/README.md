@@ -1613,6 +1613,49 @@ Deliberately left running: the Qomolo systemd monitoring units
 the X/remote-desktop stack. These are part of the vehicle software stack, not
 leftovers.
 
+## Final release-5.7 migration and spconv ABI fix (2026-09-21)
+
+The intended production base was clarified to be `release-5.7`, not `master`.
+The runtime and profile topic branches were therefore rebuilt and pushed on
+their latest release-5.7 bases:
+
+| repository | release-5.7 base | topic tip | delta |
+|---|---|---|---|
+| `perception_q` | `2b8efd0a` | `eb4f9f5f` | ten MapOD commits plus one ABI fix |
+| `perception_q_profile_project` | `6b16b92` | `aad3470` | one qthd MapOD profile commit |
+
+Both topic branches are named `release-test-mapod-share-model-5.7`. The profile
+contains only the `dl_bevfusion_mapod` algorithm configuration, its pipeline,
+and the switch of qthd `enabled_pipline`; detailed timers remain disabled.
+
+The SCN startup abort described above was fixed in runtime commit `eb4f9f5f`
+(`fix: align MapOD spconv header with runtime ABI`). The MapOD-bundled
+`spconv/engine.hpp` now declares the actual five-argument virtual ABI exported
+by `libspconv_q.so`:
+
+```cpp
+build(Precision, bool sortmask, bool enable_blackwell,
+      bool with_auxiliary_stream, void* stream)
+```
+
+and restores `TensorLayout::NHWzC = 3`. This prevents an uninitialised register
+from being interpreted as the CUDA stream during `EngineBuilderImpl::build`.
+
+The Orin checkouts in `baize_ruicao-wviz-1` were switched to these two 5.7
+tips, with backup branches preserving the previous 5.8 checkouts. On Orin,
+`bevfusion_mapod_core` and the integrating `lidar_obj_det` target both compiled
+and linked successfully from the corrected sources. This is compile/link
+validation only; playback still needs to verify that SCN construction advances
+past the former 709/201 abort.
+
+One environment caveat remains: at validation time `/opt/qomolo/welldrive`
+still contained the master-line `libcommon_msg.so.0.1.267-0`, while the checked
+out release-5.7 `DEPENDENCE.yml` specifies
+`welldrive-interface-common-msg 5.7.8-2234751`. Before treating playback as a
+clean release-5.7 validation, resynchronise the container dependencies through
+the normal development-profile workflow; do not infer dependency correctness
+from the successful targeted link alone.
+
 Two smaller observations: the container has `DISPLAY=unix`, which is not a valid
 display string (`run.txt` uses `export DISPLAY=:0`); and reading
 `/sys/kernel/debug/nvmap/iovmm/clients` to identify CMA holders needs root —
