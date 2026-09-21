@@ -1613,7 +1613,11 @@ Deliberately left running: the Qomolo systemd monitoring units
 the X/remote-desktop stack. These are part of the vehicle software stack, not
 leftovers.
 
-## Final release-5.7 migration and spconv ABI fix (2026-09-21)
+## Final release-5.7 migration and spconv ABI fix (2026-09-21) — SUPERSEDED
+
+This was an intermediate correction only. The user subsequently established
+`release-test-mapod-share-model-5.8` as the sole maintained runtime/profile
+branch. Do not make further changes on the 5.7 topic branches.
 
 The intended production base was clarified to be `release-5.7`, not `master`.
 The runtime and profile topic branches were therefore rebuilt and pushed on
@@ -1655,6 +1659,28 @@ out release-5.7 `DEPENDENCE.yml` specifies
 clean release-5.7 validation, resynchronise the container dependencies through
 the normal development-profile workflow; do not infer dependency correctness
 from the successful targeted link alone.
+
+## Canonical maintained branches: release-test-mapod-share-model-5.8 (2026-09-21)
+
+User direction supersedes all earlier 5.7 migration notes: from this point on,
+make MapOD runtime and profile changes only on
+`release-test-mapod-share-model-5.8`.
+
+| repository | canonical tip | note |
+|---|---|---|
+| `perception_q` | `62673490` | master-based MapOD plus the verified spconv ABI fix |
+| `perception_q_profile_project` | `35a4044` | master-based qthd MapOD profile; commit title corrected to 5.8 without YAML changes |
+
+The runtime fix was cherry-picked from the validated 5.7 experiment and keeps
+the same two changes: the five-argument `EngineBuilder::build` declaration and
+`TensorLayout::NHWzC = 3`. Both branches were pushed and the Orin checkouts in
+`baize_ruicao-wviz-1` were switched to these exact tips. Backup branches retain
+the preceding checkouts.
+
+Because 5.8 is master-based, the observed master-line dependency set in
+`/opt/qomolo/welldrive` is expected for this final branch. The next required
+validation is a full rebuild/install followed by playback confirming SCN engine
+construction passes the former CUDA 709/201 failure point.
 
 Two smaller observations: the container has `DISPLAY=unix`, which is not a valid
 display string (`run.txt` uses `export DISPLAY=:0`); and reading
