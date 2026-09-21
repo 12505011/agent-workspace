@@ -640,3 +640,11 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   original `torchrun` exit code. The script was synced to 4090_8 and passed
   `bash -n` there. Start it from the repository root with
   `bash tools/3dod_maptr/train_shared_bev_nuscenes_joint.sh`.
+- PKL sensor-path policy was made explicit and uniform on 2026-09-21. The
+  converter defaults to `--data-path-mode relative`, resolving Camera, main
+  LiDAR and LiDAR-sweep paths relative to the MapTR repository; `absolute`
+  writes all three as absolute paths. A post-conversion validator rejects any
+  mixed dataset, and `metadata.data_path_mode` records the selected contract.
+  Existing PKLs were preserved unchanged. Ten focused tests pass locally and
+  on 4090_8. Delivery commits: `8976539` on the nuScenes branch and `fc7a87f`
+  on the mmdet3d/Westwell branch.
