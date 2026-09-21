@@ -708,3 +708,28 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   not launched concurrently. The already-running Python processes have their
   old config loaded in memory; the new canonical shell should be launched only
   after those GPUs are free.
+
+### Official-query batch-2 CUDA fault and safe batch-1 contract (2026-09-21)
+
+- The first eight-GPU official-query launch failed on local rank/GPU 1 during
+  the first backward. This was not a normal CUDA OOM: the Python error was
+  `CUDA error: an illegal instruction was encountered`, while the kernel log
+  recorded Xid 13 (`SM Warp Exception: Out Of Range Register`) followed by Xid
+  31 (graphics MMU virtual-read fault) on PCI `65:02`. The SIGABRT/NCCL cleanup
+  trace was secondary fallout after that CUDA context failure.
+- A controlled differential rerun used the same GPU 1, same 50+300 vectors and
+  7000 training queries, `CUDA_LAUNCH_BLOCKING=1`, one process, micro-batch 1,
+  and zero DataLoader workers. It completed 50 training iterations without a
+  new Xid; the logger reported 5749 MB training memory. It was then terminated
+  intentionally by the 150-second diagnostic timeout. This rules out a dead
+  GPU and shows that the official query shape itself is viable; the failure is
+  specific to the larger-query micro-batch-2 path/pressure in this legacy CUDA
+  stack.
+- Commit `ad977d3` makes the production experiment use one sample/GPU and four
+  accumulated micro-iterations, preserving effective global batch
+  `1*8*4=32`. Warmup was changed from 1000 to 2000 micro-iterations so it still
+  spans 500 optimizer updates; LR, official query parameters, gradient clip,
+  and workers remain unchanged. A regression test asserts this contract. The
+  new work directory contains `bs1_acc4`, remains clean on 4090_8, and all
+  three synchronized files match local MD5. The failed `bs2_acc2` directory is
+  retained as evidence and is not resumed.
