@@ -1303,7 +1303,14 @@ ported because it left orphaned MapTR pipeline list entries after deleting the
 pipeline key. Retired benchmark keys and the standalone MapTR profile were not
 added.
 
-## Runtime and profile re-based on release-5.7 (2026-09-21)
+## Runtime and profile re-based on release-5.7 (2026-09-21) — SUPERSEDED
+
+> **Superseded later the same day.** The user asked for the branch to sit on the
+> latest `master` instead, and for it to be renamed to
+> `release-test-mapod-share-model-5.8`. See "Branches re-based on master and
+> renamed to release-test-mapod-share-model-5.8 (2026-09-21)" at the end of this
+> file. The tips recorded below (`ecb2afd0`, `aad3470`) are no longer the
+> branch of record. The section is kept as the record of what was tried.
 
 The master-based rebuild recorded above was abandoned the same day. Its first
 Orin build failed, and the failure was not in MapOD: the `dl_yolo` target failed
@@ -1411,3 +1418,232 @@ over HTTP but has no stored git credentials (`could not read Username for
 'https://gitlab.qomolo.com'`), so the fetch needs credentials supplied first. An
 incremental bundle was prepared and staged at `/debug/.orin_sync/` and then
 removed at user direction; the user performs the Orin update.
+
+## Branches re-based on master and renamed to release-test-mapod-share-model-5.8 (2026-09-21)
+
+At user direction the branch was moved off `release-5.7` and onto the latest
+`master`, and renamed from `release-test-mapod-share-model-5.7` to
+`release-test-mapod-share-model-5.8`. Only the MapOD work rides on top; nothing
+else from either earlier baseline was carried over.
+
+A naming caveat worth knowing: `release-5.8` exists in the profile repository
+(`5bf55ba7`) but **not** in `perception_q`, whose newest release branch is
+`release-5.7`. So "5.8" here is a branch name, not a shared base — the base is
+`master`, as instructed.
+
+### The two new branches
+
+| repository | base (`origin/master`) | tip | commits on top |
+|---|---|---|---|
+| `perception_q` | `c66baac0` bugfix-qp-51158-airy-lidar-trailer-hangup-detection | `e3cc519a` | 10 (MapOD) |
+| `perception_q_profile_project` | `3e0eaf3` bugfix-qp-51158-airy-lidar-trailer-hangup-detection | `688c6d9` | 1 |
+
+`perception_q` delta versus master is 70 files, `+35288/-4`: 71 new files under
+the MapOD directories plus three integration points. The profile delta is one
+file, `+194/-1`. Both were pushed as new branches named
+`release-test-mapod-share-model-5.8`; the earlier `...-5.7` remote branches were
+left in place. Backups of the release-5.7 tips are kept locally as
+`backup/mapod-release57-basis-20260921` and
+`backup/mapod-profile-release57-basis-20260921`.
+
+### Conflicts during the re-application
+
+Two files conflicted, both on the first commit only:
+
+- `src/lidar_obj_det/CMakeLists.txt` — master adds
+  `selftrailer_relabel_{config,utils,alg}.cpp` where MapOD adds its two sources.
+  Resolution keeps both sets.
+- `src/lidar_obj_det/lidar_obj_det_node.cpp`, twice. Master has
+  `kNarrowSpaceLinePubName = "narrow_space_line"` where MapOD adds a publisher
+  constant. Resolution keeps master's constant and publisher and adds MapOD's.
+  The third MapOD commit then renames the MapOD constant to
+  `kMapTRPointCloudPubName = "maptr_pointcloud"` — the same standalone MapTR
+  topic contract used on the release-5.7 base — so the intermediate
+  `kMapODPointCloudPubName` is gone from the final tree. Verified: the old symbol
+  has zero references and `maptr_pointcloud` is referenced from the constant, the
+  publisher registration and the publish site.
+
+Master-side work is intact on the new branch: `selftrailer` appears in 9 files
+and `narrow_space_line` in 1.
+
+### Dependency trap when building this branch
+
+Master's `DEPENDENCE.yml` is a different package line from release-5.7:
+
+| package | release-5.7 | master |
+|---|---|---|
+| `welldrive-interface-common-msg` | 5.7.8-2234751 | 0.1.267-2299845 |
+| `welldrive-interface-external-msg` | 5.7.4-2273949 | 0.1.166-2297017 |
+| `welldrive-common-osm-map` | 5.7.8-2283865 | 0.1.93-2291642 |
+| `qomolo-mwa-baize` | 0.1.234-2219328 | 0.1.240-2290862 |
+| `welldrive-common-common-q` | 0.1.39-2243124 | 0.1.40-2291592 |
+
+Master's `src/dl_runtime/dl_yolo/dl_runtime.cpp:2753` still uses
+`TrafficLightGroup::uuid`, which is exactly what made the earlier master-based
+attempt fail to compile on Orin. A build of this branch therefore needs master's
+dependency set, not the 5.7 one.
+
+## First MapOD bring-up on Orin (2026-09-21, `release-test-mapod-share-model-5.8`)
+
+Both Orin repositories were switched to the new branch (`e3cc519a`, `688c6d9`)
+and `perception_q` was built there; `/debug/install/lib/libperception_q_lidar_obj_det.so`
+and `libperception_q_bevfusion_mapod_core.so` are dated 14:01. Playback used
+`/debug/issue/jk_mapod`.
+
+### How far it gets
+
+MapOD now constructs and reaches model loading:
+
+```
+camera_infos:0-> 3   camera_infos:1-> 1   camera_infos:6-> 2   camera_infos:7-> 0
+Change Camera 0..3 from image size: 1920x1536 to 960x540
+Using MapOD postprocess config
+applied bev param yaml overrides voxel_xy=[0.075000,0.075000] range_xy=[-54.000000,54.000000] geometry_dim=[360,360,80]
+Independent MapOD bundle=/opt/qomolo/qpilot-resource/perception/model/dl_bevfusion_mapod cameras=4
+  lidar=.../lidar.backbone.xyz.onnx  camera=.../camera.backbone.plan  ...
+```
+
+The `Change Camera` lines are configuration only: the code sets `need_half` and
+`cy_delta` and logs; it does not touch the image.
+
+### The failure
+
+Immediately after the bundle log, the SCN engine build fails:
+
+```
+[tensor.cu:389] (Error) CUDA Runtime error cudaStreamSynchronize((cudaStream_t)stream)
+                # context is destroyed, code = cudaErrorContextIsDestroyed [ 709 ] in file src/spconv/tensor.cu:389
+[engine.cu:1900] (Error) CUDA Runtime error cudaStreamSynchronize(stream) ... same
+```
+
+repeated for each sparse convolution, then `SIGABRT`. The stack is unambiguous:
+
+```
+LidarObjDetNode::init -> reset -> AlgFactory::CreateInstances -> CreateInstance
+  -> CreateObjectOrNull -> AlgFactory::Init lambda#6
+  -> dl_bevfusion_mapod::dl_bevfusion_mapod(SegDetOptions const&)
+  -> create_mapod_core -> CoreImplement::init -> lidar::create_scn
+  -> spconv::load_mapod_engine_from_onnx
+  -> spconv::EngineBuilderImpl::build -> spconv::SparseConvNode::SparseConvNode
+  -> spconv::Tensor::from_data -> cudaStreamSynchronize   (libspconv_q.so)
+```
+
+Note on the API: `load_mapod_engine_from_onnx` declares
+`(onnx_file, precision = Float16, void* stream = nullptr, bool mark_all_output = false)`
+and `create_scn` passes only the first two arguments, so the engine is built on
+the null stream. `cudaStreamSynchronize(nullptr)` is itself legal, so the null
+stream is not by itself an explanation for a destroyed context.
+
+### Root cause: the MapOD-bundled spconv header declares the wrong `build()` ABI
+
+`libspconv_q.so` exports exactly one builder entry point, and its mangled symbol
+demangles to **five** parameters:
+
+```
+$ nm -DC /opt/qomolo/welldrive/third_party/third_party_binary/lib/libspconv_q.so | grep EngineBuilderImpl::build
+00000000000340f0 W spconv::EngineBuilderImpl::build(spconv::Precision, bool, bool, bool, void*)
+```
+
+The MapOD bundle ships its own spconv headers under
+`src/dl_runtime/dl_bevfusion_mapod/libraries/3DSparseConvolution/libspconv/include/spconv/`
+and declares the same virtual with **two** parameters:
+
+```cpp
+Exported virtual std::shared_ptr<Engine> build(Precision precision, void* stream = nullptr) = 0;
+```
+
+The legacy `dl_bevfusion` bundle carries a corrected copy of the same header,
+with the ABI spelled out in a comment — it was fixed in `8d15c25d
+bugfix-qp-50589-spconv`:
+
+```cpp
+// libspconv_q ABI: build(precision, sortmask, enable_blackwell, with_auxiliary_stream, stream)
+Exported virtual std::shared_ptr<Engine> build(Precision precision, bool sortmask = false,
+                                                bool enable_blackwell = false,
+                                                bool with_auxiliary_stream = false,
+                                                void* stream = nullptr) = 0;
+```
+
+MapOD re-introduced the pre-fix header in `6494f86f`, so
+`load_mapod_engine_from_onnx` compiles a two-argument call into a five-argument
+callee: the `stream` argument lands in `sortmask`, and the callee's real `stream`
+parameter reads an uninitialised register. That value is handed to
+`SparseConvNode` and eventually to `Tensor::from_data` →
+`cudaStreamSynchronize(<garbage>)`, which is where the CUDA error and the abort
+surface. The observed stack agrees: the frame inside the shared object is
+`EngineBuilderImpl::build(Precision, bool, bool, bool, void*)`.
+
+The fix is to bring the MapOD-bundled headers back in line with the corrected
+copy — at minimum the `build` declaration, and the `TensorLayout` enumerator
+`NHWzC = 3` that the corrected header also carries (the shared object's
+`push_dense` already takes `spconv::TensorLayout`).
+
+### Hypotheses eliminated, with evidence
+
+- **EGL/nvbuf involvement inside MapOD.** No `EGL`, `NvBufSurface`,
+  `nvbuf`, `cudaDeviceReset` or `cudaSetDevice` reference exists anywhere under
+  the mapod tree.
+- **A missing bundle artifact.** `engine_checksums.md5` lists
+  `lidar.backbone.xyz.onnx` and no lidar plan, so building that engine at runtime
+  is intended. Other bundles (`dl_bev_igv_cnntoth`, `dl_bev_qthd_mxvlkica`) also
+  ship ONNX-only lidar backbones.
+- **Resource contention from stray processes.** See below — the host is idle and
+  the cleanup did not move CUDA-visible memory.
+
+Both CMakeLists use their own bundled include directory and link the same
+`libspconv_q.so`; neither uses the `third_party_binary/include/spconv` copy
+(v1.0.0), which is a third and older variant still.
+
+### Environment findings and cleanup
+
+Two host processes had been stuck for about 44 days inside the playback
+container: `gst-inspect-1.0 vpiconvert` and its `gst-plugin-scanner`, plus the
+`docker exec` and inner `bash` that launched them. All four were killed
+(three required killing from inside the container, since the container has its
+own PID namespace and the processes are root-owned).
+
+**CMA did not recover:** `CmaFree` went from 7100 kB to 7844 kB out of
+`CmaTotal` 262144 kB. Those processes were not the CMA holders, and the machine
+showed no other pressure — load average 0.26, highest CPU `node` at 5.5 %,
+highest RSS 982 MB, and no `D`/`Z` state processes.
+
+Deliberately left running: the Qomolo systemd monitoring units
+(`qomolo_io_block_monitor`, `qomolo_gpu_mem`, `qomolo_io_monitor`,
+`qomolo_gpustats`, `qomolo_can_monitor@can0..3`), the interactive sessions, and
+the X/remote-desktop stack. These are part of the vehicle software stack, not
+leftovers.
+
+Two smaller observations: the container has `DISPLAY=unix`, which is not a valid
+display string (`run.txt` uses `export DISPLAY=:0`); and reading
+`/sys/kernel/debug/nvmap/iovmm/clients` to identify CMA holders needs root —
+`sudo -n` on the Orin requires a password.
+
+## Open questions
+
+- **Whether the `build()` ABI mismatch fully explains the abort.** The mismatch is
+  proven and mechanically accounts for a garbage stream reaching
+  `cudaStreamSynchronize`, but it has not been re-tested after fixing the header.
+  It also raises a question worth answering: whether the SCN ONNX build ever
+  succeeded on this Orin from a build that carried the stale header, and if so,
+  how — which would point at a second factor.
+- **What holds roughly 254 MB of CMA.** Needs root to enumerate nvmap clients.
+  Low CMA may be normal for this unit; it is currently an unexplained observation,
+  not an established cause.
+- **The player-side message-compatibility gap.** An earlier investigation this
+  session found that the installed `welldrive-temp-interface-collect`
+  (`0.1.69-2140498`, exactly what `welldrive-group 0.2.153p1-test` pins) cannot
+  resolve 39 of the 81 struct streams in `/debug/issue/jk_mapod`, and 29–34 in the
+  other 5.7 bags. The type fingerprints are struct-layout hashes, so the same
+  type name appears under different hashes per build; `FunctionState` has three
+  variants in the shipped `lib_info.yaml` and the bag's is a fourth. Downloading
+  and unpacking `welldrive-temp-interface-collect 0.1.77-2299104` (205 MB, not
+  installed) added 5.6/5.7 message libraries but not the one hash that was
+  checked. The player does not null-check the symbol it resolves, so a missing
+  hash becomes a `SIGSEGV` at `0x0` inside
+  `PlayerUtil::handle_stream_data` instead of a skipped stream. The bag's own
+  qfile metadata names the offender:
+  `msg-name=function_control/state  msg-type=FunctionState  msg-hash=578067513978873289`.
+  This is a platform-side data-compatibility gap, not something the branch can
+  fix. Note that with the 5.8 build MapOD does reach init, so whatever was
+  blocking player startup at that point is either gone or was not hit in this run
+  — the change was not isolated.
