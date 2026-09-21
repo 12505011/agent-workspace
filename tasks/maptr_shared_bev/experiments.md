@@ -684,3 +684,27 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   `bev_3dod_maptr_shared_bev_nuscenes`; it was not copied into the active
   non-Git 4090_8 training snapshot, so the running baseline and resume contract
   were not changed.
+
+### Official-query nuScenes rerun prepared on 4090_8 (2026-09-21)
+
+- The official-query run uses a new, non-resuming output directory ending in
+  `official_q50_p20_o2m300_k6`; commit `dccad91` first isolated that run from
+  the existing 40x15 experiment. At the user's request, commit `3041201` then
+  raised all inherited parameter-group peak learning rates by 25% while
+  preserving their ratios: base/shared-trunk and OD `2.5e-4`, R50 camera
+  backbone `7.5e-5` (0.3x), and Map head `7.5e-4` (3.0x). Warmup remains 1000
+  micro-iterations = 500 optimizer updates, accumulation remains two, and the
+  cosine schedule, gradient clipping, 24 epochs, and evaluation at
+  16/18/20/22/24 are unchanged.
+- Four files were copied into the non-Git 4090_8 snapshot after creating
+  `.codex_backup_official_queries_20260921`: the shared common config, corrected
+  forward-ROI 24e config, canonical training shell, and query-contract test.
+  Local/remote MD5 values match for all four. Server-side config parsing and
+  the focused unit test pass; the resolved contract is 7000 train queries,
+  1000 eval queries, base LR `2.5e-4`, and the intended new work directory was
+  confirmed absent.
+- The prior `lr2e4_map6e4` eight-GPU run was still active during synchronization
+  (about 24.1 GiB per GPU). It was not stopped, and the new run was deliberately
+  not launched concurrently. The already-running Python processes have their
+  old config loaded in memory; the new canonical shell should be launched only
+  after those GPUs are free.
