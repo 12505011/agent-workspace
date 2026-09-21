@@ -648,3 +648,14 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   Existing PKLs were preserved unchanged. Ten focused tests pass locally and
   on 4090_8. Delivery commits: `8976539` on the nuScenes branch and `fc7a87f`
   on the mmdet3d/Westwell branch.
+- Conservative MapTRv2 one-to-many training supervision was restored in both
+  active code branches on 2026-09-21: 40 one-to-one vectors remain the deploy
+  contract, while training adds 80 one-to-many vectors with `k_one2many=2`
+  and `lambda_one2many=1.0`; each vector still has 15 points. Runtime checks
+  on the nuScenes branch confirmed train mode uses 120 vectors/1800 point
+  queries and eval mode remains 40 vectors/600 point queries. The mmdet3d
+  branch passed the config contract test; its temporary worktree could not
+  load locally compiled CUDA extensions, so no second redundant head-build
+  check was claimed. Commits: `0235d4f` (nuScenes) and `944f08c` (mmdet3d).
+  These Git changes were intentionally not copied into the active 4090_8
+  training snapshot, preserving the running baseline and its resume contract.
