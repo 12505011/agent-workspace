@@ -1275,3 +1275,22 @@ Per user direction, no local or Orin build was run for this migration. The
 existing `mapod_parallel_schedule_test.py` has two stale source-string
 assertions after the earlier timing-experiment retirement; its failures were
 observed but were not changed or treated as build validation.
+
+### Profile repository migration
+
+The maintained profile repository is now
+`/data/baize/baize-welldriver/src/perception_q_profile_project`. Its
+`release-test-mapod-share-model-5.7` branch was created from the then-current
+`origin/master` commit `ad2041b`; commit `ee852a0` adds only the
+`dl_bevfusion_mapod` parameter block, the
+`pipline-dl_bevfusion_mapod_cluster` pipeline, and selects that pipeline for
+qthd. The branch was pushed to origin.
+
+The production MapOD values were sourced from the last clean old-profile state
+`939b0513`. YAML parsing and structural comparisons verified that the MapOD
+parameter block and pipeline match that source exactly. After removing the two
+new nodes and restoring `enabled_pipline`, all remaining parsed data matches
+the latest master. The later old-profile commit `2db2731e` was deliberately not
+ported because it left orphaned MapTR pipeline list entries after deleting the
+pipeline key. Retired benchmark keys and the standalone MapTR profile were not
+added.
