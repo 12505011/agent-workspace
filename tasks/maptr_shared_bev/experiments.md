@@ -659,3 +659,28 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   check was claimed. Commits: `0235d4f` (nuScenes) and `944f08c` (mmdet3d).
   These Git changes were intentionally not copied into the active 4090_8
   training snapshot, preserving the running baseline and its resume contract.
+
+### nuScenes MapTRv2 official query-contract alignment (2026-09-21)
+
+- The nuScenes branch's conservative Map-query setting from `0235d4f` was
+  superseded by commit `602befb`. Its shared-BEV Map head now matches the
+  official MapTRv2 query/supervision parameters: 50 one-to-one vectors, 300
+  training-only one-to-many vectors, `k_one2many=6`,
+  `lambda_one2many=1.0`, and 20 predicted/GT points per vector. The existing
+  six-layer decoder was already aligned and remains unchanged.
+- A real head-build check on the corrected forward-ROI 24e config confirmed
+  350 vectors / 7000 point queries in train mode and 50 vectors / 1000 point
+  queries in eval mode; the focused config-contract unit test also passes.
+  This alignment is limited to the MapTRv2 query/supervision contract: the
+  shared-BEV architecture, forward ROI, four map classes (including
+  centerline), and multitask loss scaling remain project-specific.
+- Unlike the one-to-many group, the 50x20 one-to-one setting changes inference
+  and export shape from the prior 40x15 (600 queries) to 50x20 (1000 queries).
+  Existing 40x15 ONNX/engine/profile assumptions are therefore incompatible
+  and must be updated before deploying a checkpoint trained with this config.
+- The mmdet3d/Westwell branch deliberately remains at the conservative
+  40-one-to-one + 80-one-to-many, `k=2`, 15-points contract (`944f08c`). The
+  official-alignment commit was pushed only to
+  `bev_3dod_maptr_shared_bev_nuscenes`; it was not copied into the active
+  non-Git 4090_8 training snapshot, so the running baseline and resume contract
+  were not changed.
