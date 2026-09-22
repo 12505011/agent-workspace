@@ -764,3 +764,19 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   directory was absent. Synchronization did not stop or mutate the already
   running `o2m300_k6` process; start the new launcher only after those GPUs are
   free.
+- The first eight-GPU `no_o2m` launch aborted before a logged training interval
+  on local rank 1. Kernel logs at `2026-09-22 10:45:06` showed Xid 13 on the
+  same physical GPU 1 / PCI `65:02.0` as the earlier batch-2 incident, with
+  multiple SM `Out Of Range Register` exceptions. The Python traceback landed
+  at `torch.where` while preparing BEVPool intervals, but that is an
+  asynchronous CUDA error-reporting site and is not evidence that `torch.where`
+  or the no-o2m override caused the fault.
+- A clean process restart of the identical eight-GPU command passed at least
+  150 iterations without a new Xid. Its startup OD classification loss matched
+  the prior `o2m300_k6` run closely (`24641/8100/5077` versus
+  `24642/8102/5074` at iterations 50/100/150), confirming that the large early
+  loss and `grad_norm=inf` are pre-existing warmup behavior rather than a
+  no-o2m regression. If Xid 13 recurs, the minimal diagnostic is to swap the
+  CUDA device enumeration so local rank 1 no longer maps to PCI `65:02.0`:
+  failure following the PCI device implicates the physical GPU/driver path;
+  failure following local rank 1 implicates its sample/operator path.
