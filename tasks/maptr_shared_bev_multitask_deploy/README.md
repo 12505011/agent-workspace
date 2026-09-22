@@ -1739,3 +1739,43 @@ display string (`run.txt` uses `export DISPLAY=:0`); and reading
   aborted. Camera removal likewise did not change the failure. Do not modify
   the user's playback script implicitly; use a compatible qfile/interface
   package or an explicitly approved playback-only topic-list override.
+
+### Newer host `baize_player/log.log` supersedes the earlier abort diagnosis
+
+The later host log
+`/data/code/all_ws/ws/ruicao/baize_ruicao/baize_player/log.log` (50,393,888
+bytes, 188,734 lines, mtime `2026-09-22 04:57:25 UTC`) reaches farther than
+`/tmp/mapod_after_profile_dev_retry.log` and does **not** reproduce the
+`FunctionState` abort. There is no fatal signal, CUDA error, abort, or loader
+initialisation failure in this run. MapOD selects the intended pipeline, loads
+calibration and the four-camera remap, logs every model artifact, and reaches
+`Finished creating step0 type=<dl_bevfusion_mapod>`.
+
+The reason it still performs zero inference frames is the point-cloud publish
+policy introduced on the newer runtime line:
+
+- `lidar_preprocess` logs `host_id: 2`,
+  `enable_host_id_pointcloud_publish_control: 1`, and
+  `pointcloud_publish_policy: full_and_filter_only`.
+- It then logs `Skip ObstaclePointcloudOutputAlg because pointcloud publish is
+  disabled for host_id=2` for every processed LiDAR frame (914 occurrences in
+  this log), while continuing to publish `full_pointcloud` and
+  `filtered_pointcloud`.
+- `lidar_obj_det` subscribes to `obstacle_pointcloud`; consequently its frame
+  callback never runs and the log contains zero `MAPOD_INPUT_GATE`,
+  `MAPOD_OUTPUT`, `MAPOD_BENCHMARK`, `MAPOD_STAGE`, or `MAPOD_PROC_TIME` lines.
+
+The immediate configuration-level compatibility fix is to set
+`enable_host_id_pointcloud_publish_control: false` under the effective
+`perception_q/lidar_preprocess/qthdot128` profile so that all three point-cloud
+topics are published. This is preferable for the current MapOD wiring to
+changing its input topic without first checking whether `full_pointcloud` or
+`filtered_pointcloud` has the same semantic/layout contract as the historical
+`obstacle_pointcloud`. This fix was identified but not applied during the
+read-only log inspection.
+
+The final `Cleanup timeout(3), force exit` is playback shutdown after roughly
+90 seconds of frame processing, not a MapOD startup crash. The large tail of
+player timestamp-drift messages is a separate playback scheduling symptom and
+does not explain the absence of MapOD inference: the missing
+`obstacle_pointcloud` already deterministically prevents the callback.
