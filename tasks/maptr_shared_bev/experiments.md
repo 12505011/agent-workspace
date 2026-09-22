@@ -733,3 +733,34 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   new work directory contains `bs1_acc4`, remains clean on 4090_8, and all
   three synchronized files match local MD5. The failed `bs2_acc2` directory is
   retained as evidence and is not resumed.
+
+### Official-query result audit and no-one-to-many ablation (2026-09-22)
+
+- The `official_q50_p20_o2m300_k6` run was still training in epoch 21 when
+  audited, so it was not described as a completed 24-epoch result. Its valid
+  evaluations were: epoch 16 Map/OD/NDS `0.32156/0.27756/0.32855`, epoch 18
+  `0.32752/0.27453/0.31979`, and epoch 20
+  `0.32427/0.28014/0.32220`. The best observed Map checkpoint was epoch 18.
+- The same-data, same-forward-ROI 40-vector/15-point baseline scored Map/OD
+  `0.38784/0.40163`, `0.39252/0.40819`, and `0.41551/0.41392` at epochs
+  16/18/20. Because OD also regressed by about `0.12-0.13`, the new result is
+  a real training regression rather than only a Map 15-point versus 20-point
+  evaluation-sampling difference.
+- The comparison is not a one-variable one-to-many test. In addition to
+  `40x15/no-o2m -> 50x20/o2m300/k6`, it changed micro-batch/accumulation from
+  `2/2` to `1/4` and raised all peak LRs by 25%. Effective global batch stayed
+  32, but gradient accumulation does not reproduce per-forward BatchNorm
+  statistics; trainable BN remains in the camera neck and SECOND decoder.
+- Commit `079a4dc` prepares the requested controlled follow-up on
+  `bev_3dod_maptr_shared_bev_nuscenes`: retain 50 one-to-one vectors, 20 points,
+  batch 1, accumulation 4, 500-update warmup, base LR `2.5e-4`, and Map-head LR
+  `7.5e-4`, while overriding `num_vec_one2many/k_one2many/lambda_one2many` to
+  `0/0/0`. The new independent run directory ends in
+  `official_q50_p20_no_o2m`.
+- The config, canonical launcher and focused contract test were backed up under
+  `.codex_backup_no_o2m_20260922_102946` and copied to 4090_8. Local/remote MD5
+  values match. Remote unit tests and launcher syntax pass; resolved training
+  queries are 1000, LR/batch/warmup are unchanged, and the target output
+  directory was absent. Synchronization did not stop or mutate the already
+  running `o2m300_k6` process; start the new launcher only after those GPUs are
+  free.
