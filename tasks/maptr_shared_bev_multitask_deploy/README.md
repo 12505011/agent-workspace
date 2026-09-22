@@ -1801,3 +1801,30 @@ development session. Standard low-cost platform monitors (tegrastats, pidstat,
 CAN monitors) also remained active. Recheck load immediately before the timing
 round; this cleanup does not fix the separate missing-`obstacle_pointcloud`
 input configuration described above.
+
+### First post-cleanup timing topology (2026-09-22)
+
+The effective generated profile used for the user's pasted `step 0
+dl_bevfusion_mapod` timings has the following exact topology:
+
+- `num_camera: 4`, physical raw cameras `[7, 1, 6, 0]` mapped to private union
+  slots `[0, 1, 2, 3]`;
+- both `od_camera_indices` and `map_camera_indices` are `[0, 1, 2]`, so both
+  routes use the same physical three-camera set `[7, 1, 6]`;
+- `benchmark_single_bev: true`, therefore only the OD-route BEVPool,
+  VTransform, and fuser pass runs and its decoded BEV feeds both heads. This is
+  timing-only and Map accuracy is invalid;
+- `benchmark_map_ready_mode: async` and `enable_timer: true`;
+- `crop_player_undistorted_input: false`; the active `qbaize_play.yaml` also has
+  `camera_undistort=false` and blacklists cameras 2/3/4/5/8, leaving raw cameras
+  0/1/6/7 available;
+- four camera images are still accepted and processed by the unchanged union
+  camera encoder. Aligning the head routes and enabling `single_bev` removes
+  the second fusion route; it does not reduce the camera backbone from four
+  images to three.
+
+The pasted outer algorithm timer is mostly 130-150 ms (observed range about
+129.49-161.18 ms) and represents about 76-81% of the surrounding node time.
+This outer `step 0` timer is not an internal stage breakdown; use
+`MAPOD_BENCHMARK`, `MAPOD_STAGE`, and `MAPOD_PROC_TIME` from the same run before
+attributing the regression to SCN, fuser, heads, or postprocessing.
