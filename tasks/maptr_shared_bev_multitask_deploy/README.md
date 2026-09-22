@@ -1779,3 +1779,25 @@ The final `Cleanup timeout(3), force exit` is playback shutdown after roughly
 player timestamp-drift messages is a separate playback scheduling symptom and
 does not explain the absence of MapOD inference: the missing
 `obstacle_pointcloud` already deterministically prevents the callback.
+
+### Orin load cleanup before the next playback (2026-09-22)
+
+User explicitly requested a clean timing environment. Survey showed that every
+container except `baize_ruicao-wviz-1` was already stopped, including
+`qpilot-orin`, `qp_tl-wviz-1`, and `wp53-wviz-1`. There were no residual
+`loader_exe`, playback, Nsight, or `trtexec` processes. Two safe cleanup actions
+were applied:
+
+- stopped `qomolo_io_block_monitor.service`, whose documented `/proc` scan was
+  consuming about 4.7% of one CPU core; restart after testing with
+  `sudo systemctl start qomolo_io_block_monitor.service`;
+- terminated the stale container process
+  `tail -f -n +1 /tmp/maptr_run.log` (host PID 518502 / container PID 207253).
+
+Post-cleanup load average was `0.34 1.06 0.96`, with 21 GiB memory available.
+The Cursor remote extension host remained active at about 5.4% of one core: it
+was deliberately not killed because doing so would disconnect the user's live
+development session. Standard low-cost platform monitors (tegrastats, pidstat,
+CAN monitors) also remained active. Recheck load immediately before the timing
+round; this cleanup does not fix the separate missing-`obstacle_pointcloud`
+input configuration described above.
