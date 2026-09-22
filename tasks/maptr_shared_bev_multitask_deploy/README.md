@@ -1716,3 +1716,26 @@ display string (`run.txt` uses `export DISPLAY=:0`); and reading
   fix. Note that with the 5.8 build MapOD does reach init, so whatever was
   blocking player startup at that point is either gone or was not hit in this run
   — the change was not isolated.
+
+## Why the current Orin playback does not reach MapOD inference (verified 2026-09-22)
+
+- The maintained Orin checkouts are correct:
+  `perception_q release-test-mapod-share-model-5.8@62673490` and profile
+  `release-test-mapod-share-model-5.8@35a4044`. No `loader_exe` playback process
+  was running when inspected.
+- The latest `/tmp/mapod_after_profile_dev_retry.log` proves that MapOD itself
+  now initialises successfully past the former spconv ABI failure. It selects
+  `pipline-dl_bevfusion_mapod_cluster`, logs the complete independent model
+  bundle, and reaches `Finished creating step0 type=<dl_bevfusion_mapod>`.
+- Inference never starts: there are no `MAPOD_INPUT_GATE`, forward, timing or
+  output lines. About 1.65 seconds after MapOD construction, the player reads
+  qfile stream `function_control/state`, cannot resolve type hash
+  `578067513978873289` from the installed `lib_info.yaml`, and the whole loader
+  aborts. This is a qfile/interface-collect compatibility failure before the
+  first model input, not a MapOD model-load failure.
+- Adding `function_control/state` to the profile `black_list_topic` did not fix
+  this playback. `qbaize_play.sh` explicitly appends that topic to its generated
+  `topic_list`, and the corresponding reproduction still initialised MapOD then
+  aborted. Camera removal likewise did not change the failure. Do not modify
+  the user's playback script implicitly; use a compatible qfile/interface
+  package or an explicitly approved playback-only topic-list override.
