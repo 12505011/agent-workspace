@@ -41,8 +41,28 @@ shared-BEV OD + MapTR model without unacceptable OD or Map accuracy loss.
   accuracy and latency require representative Westwell data on Orin; nuScenes
   results alone cannot establish either.
 
+## Precision-probe implementation (2026-09-23)
+
+- MapTR commit `048ec35` on `bev_3dod_maptr_shared_bev_nuscenes_qat` adds a
+  reversible SCN-only fake-INT8 PyTorch probe. This is an accuracy experiment,
+  **not QAT fine-tuning or evidence of Orin INT8 acceleration**.
+- The probe uses per-output-channel symmetric 8-bit fake quantization for each
+  sparse convolution weight and per-tensor symmetric 8-bit fake quantization
+  for its input features. Activation scales come from 128 training samples by
+  default; camera, fuser, shared decoder, OD head, and Map head are unchanged.
+- `tools/3dod_maptr/eval_scn_fake_quant_nuscenes.sh` is configured for the
+  existing 40-vector/15-point epoch-22 checkpoint and its saved config. It
+  runs FP16 and fake-INT8 Map and OD validation with separate result files.
+- Local validation: two CPU contract tests passed; FP16 3x3x3 sparse-conv GPU
+  smoke test passed on RTX 3060; the full model contains 21 sparse conv layers;
+  script syntax, Python compilation, and Git whitespace checks passed.
+- The full nuScenes comparison has **not** run. `4090_8` SSH access is
+  intermittent (port 22 timeout), and no checkpoint is present locally.
+
 ## Handoff
 
-No QAT code, checkpoint, engine, or device benchmark has been produced yet.
-The next step is a read-only audit of the SCN export and third-party INT8
-builder interface before deciding how to instrument/fine-tune the model.
+When 4090_8 is reachable, verify its repository/working-tree status, saved
+checkpoint/config, and GPU occupancy before syncing the QAT branch files or
+running the eval script. Keep unrelated local/remote changes intact. Do not
+conflate PyTorch fake-INT8 validation with deployable QAT until the SCN
+export/INT8 builder path and Orin kernel selection are separately verified.
