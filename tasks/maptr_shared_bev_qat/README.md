@@ -63,8 +63,16 @@ shared-BEV OD + MapTR model without unacceptable OD or Map accuracy loss.
 - The same two CPU contract tests and script/Python syntax checks passed on
   4090_8. SHA-256 for the synced `maptr_test.py`, controller, and eval script
   matched the local files.
+- MapTR commit `17fc557` restored `workers_per_gpu=2` and made the eval script
+  compare the runnable probe config against the specified 40x15 run's saved
+  config snapshot before launching. On 4090_8, `model`, complete `data`,
+  optimizer, optimizer_config, lr_config, runner, evaluation, fp16, seed, and
+  cudnn_benchmark all matched. The runner also resets the random seed after
+  calibration, before either validation arm. The three updated files' hashes
+  matched between local and 4090_8 after sync.
 - The full nuScenes comparison has **not** run. `4090_8` SSH access is
-  intermittent, and all eight GPUs are occupied by an existing training job.
+  intermittent; an existing training job had occupied all eight GPUs at the
+  previous check, so the probe was not started.
   The checkpoint and required official-nuScenes annotation files exist on
   4090_8; the five probe files were synced there and syntax-checked.
 
