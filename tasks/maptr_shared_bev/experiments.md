@@ -780,3 +780,42 @@ as an architecture-only speed gain without a controlled same-ROI benchmark.
   CUDA device enumeration so local rank 1 no longer maps to PCI `65:02.0`:
   failure following the PCI device implicates the physical GPU/driver path;
   failure following local rank 1 implicates its sample/operator path.
+
+### Corrected-ROI 40x15 versus no-o2m 50x20, epoch 22 (2026-09-23)
+
+- 4090_8 run directories, both under `work_dirs/shared_bev/nuscenes/`:
+  `joint_6layer_gn_map_forward0_54_left20_single_frame_lss03_lr2e4_map6e4_warmup500upd_24e_bs2_acc2_w2`
+  (40x15 baseline) and
+  `joint_6layer_gn_map_forward0_54_left20_single_frame_lss03_lr2p5e4_map7p5e4_warmup500upd_24e_bs1_acc4_w2_official_q50_p20_no_o2m`
+  (50x20, no one-to-many). Values below come from each run's saved config and
+  training/evaluation logs; the newer run had not yet saved epoch 24 at audit.
+- Both runs use the same official nuScenes train/val PKL paths, forward ROI,
+  four Map classes, and per-class GT counts (`28,588/8,057/23,077/51,088`).
+  Chamfer evaluation resamples predicted and GT polylines to 100 points, so
+  the 15-versus-20 model output-point difference is not a difference in the
+  evaluator's final sampling count.
+- Epoch-22 Map mAP fell from `0.4219` to `0.2787` (absolute `-0.1432`, about
+  `-33.9%`). Map AP@0.5 fell `0.209 -> 0.114`; three-threshold class means
+  were divider `0.453 -> 0.318`, ped_crossing `0.290 -> 0.169`, boundary
+  `0.516 -> 0.365`, centerline `0.429 -> 0.263`. The 40x15 run's best OD mAP
+  was `0.4162` at epoch 22; the 50x20 run's best observed OD mAP was `0.3291`
+  at epoch 18. These OD values are from separate best-object checkpoints,
+  not necessarily the epoch-22 best-map checkpoint.
+- Resolved configs show several simultaneous changes: one-to-one Map queries
+  `40x15 -> 50x20`, micro-batch/accumulation `2x2 -> 1x4`, and peak base LR
+  `2e-4 -> 2.5e-4`. The Map-head multiplier remains `3.0`, hence its peak
+  LR is `6e-4 -> 7.5e-4`; camera-backbone LR is `6e-5 -> 7.5e-5`.
+  Effective eight-GPU global batch remains 32. Warmup is `1000/2 = 500`
+  versus `2000/4 = 500` optimizer updates. Both actual `heads.vectormap`
+  configs have `num_vec_one2many/k_one2many/lambda_one2many = 0/0/0`;
+  top-level inherited `300/6/1.0` names in the newer flattened config do
+  not activate one-to-many supervision.
+- Interpretation: the 25% LR increase has no batch-size rationale because
+  effective global batch did not increase, and is the first variable to
+  isolate. It is not a proven sole cause: 50x20 changes the Map head, and
+  micro-batch 1 can change per-forward trainable-BN statistics despite equal
+  accumulated batch. The broad Map and OD regression makes a single Map
+  metric-sampling issue implausible. The next controlled run should retain
+  the newer 50x20/no-o2m/batch-1/accumulation-4 setup and restore only base
+  LR to `2e-4` (Map head `6e-4`, camera backbone `6e-5`). Compare both tasks
+  at the same evaluated epochs before assigning causality.
