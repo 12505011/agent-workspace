@@ -60,6 +60,9 @@ shared-BEV OD + MapTR model without unacceptable OD or Map accuracy loss.
 - Local validation: two CPU contract tests passed; FP16 3x3x3 sparse-conv GPU
   smoke test passed on RTX 3060; the full model contains 21 sparse conv layers;
   script syntax, Python compilation, and Git whitespace checks passed.
+- The same two CPU contract tests and script/Python syntax checks passed on
+  4090_8. SHA-256 for the synced `maptr_test.py`, controller, and eval script
+  matched the local files.
 - The full nuScenes comparison has **not** run. `4090_8` SSH access is
   intermittent, and all eight GPUs are occupied by an existing training job.
   The checkpoint and required official-nuScenes annotation files exist on
@@ -67,8 +70,10 @@ shared-BEV OD + MapTR model without unacceptable OD or Map accuracy loss.
 
 ## Handoff
 
-When 4090_8 is reachable, verify its repository/working-tree status, saved
-checkpoint/config, and GPU occupancy before syncing the QAT branch files or
-running the eval script. Keep unrelated local/remote changes intact. Do not
-conflate PyTorch fake-INT8 validation with deployable QAT until the SCN
-export/INT8 builder path and Orin kernel selection are separately verified.
+The 4090_8 code directory has no `.git`; the five probe files were copied
+explicitly after verifying its previous `maptr_test.py` matched the local
+pre-change SHA-256. Run the eval script only after checking that its selected
+GPU is free; do not interrupt the existing 8-GPU training job without user
+direction. Do not conflate PyTorch fake-INT8 validation with deployable QAT
+until the SCN export/INT8 builder path and Orin kernel selection are
+separately verified.
