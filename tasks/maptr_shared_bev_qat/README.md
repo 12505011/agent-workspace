@@ -51,13 +51,19 @@ shared-BEV OD + MapTR model without unacceptable OD or Map accuracy loss.
   for its input features. Activation scales come from 128 training samples by
   default; camera, fuser, shared decoder, OD head, and Map head are unchanged.
 - `tools/3dod_maptr/eval_scn_fake_quant_nuscenes.sh` is configured for the
-  existing 40-vector/15-point epoch-22 checkpoint and its saved config. It
-  runs FP16 and fake-INT8 Map and OD validation with separate result files.
+  existing 40-vector/15-point epoch-22 checkpoint and the new executable
+  probe config. It runs FP16 and fake-INT8 Map and OD validation with separate
+  result files. The training-run `.py` is only a dictionary text snapshot,
+  not directly executable by MMCV. On 4090_8 the probe config's complete
+  `model` and train/val/test `data` sections were verified equal to that
+  snapshot after parsing it as a literal dictionary.
 - Local validation: two CPU contract tests passed; FP16 3x3x3 sparse-conv GPU
   smoke test passed on RTX 3060; the full model contains 21 sparse conv layers;
   script syntax, Python compilation, and Git whitespace checks passed.
 - The full nuScenes comparison has **not** run. `4090_8` SSH access is
-  intermittent (port 22 timeout), and no checkpoint is present locally.
+  intermittent, and all eight GPUs are occupied by an existing training job.
+  The checkpoint and required official-nuScenes annotation files exist on
+  4090_8; the five probe files were synced there and syntax-checked.
 
 ## Handoff
 
