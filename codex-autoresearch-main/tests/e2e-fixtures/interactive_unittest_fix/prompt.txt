@@ -1,0 +1,1 @@
+$codex-autoresearch reduce `python3 scripts/score.py` failure_count to 0 and keep the unit test passing
