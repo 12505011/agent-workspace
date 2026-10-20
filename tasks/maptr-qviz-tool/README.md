@@ -26,6 +26,15 @@
 
 ## Handoff
 
+- On 2026-10-20, added the four overlay topic registrations to `ros_tools`'s
+  `src/visualization_assist/vis_assisant.cpp`. Built target `visassist` in
+  container `baize-welldriver-wviz-1` with ROS/interface setup sourced and
+  installed `/debug/install/lib/libvisassist.so`. Its dependencies resolve
+  with the replay environment. Restart replay to load the new library.
+- ROS output names are `/camera_0/maptr_overlay`, `/camera_1/maptr_overlay`,
+  `/camera_2/maptr_overlay`, and `/camera_6/maptr_overlay`, with type
+  `sensor_msgs/msg/Image`. Live message flow still needs replay verification.
+
 - Confirm each camera topic's calibration key against the deployment profile
   before vehicle or qfile use.
 - Merge the example module profile and loader entry from the implementation
