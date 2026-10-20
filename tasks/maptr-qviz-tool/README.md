@@ -32,6 +32,12 @@
 
 ## Handoff
 
+- User narrowed publishing scope to maptr_conv_image only. Removed the
+  temporary ROS bridge commit worktree and local maptr-qviz-overlay-20261020
+  branch; original ros_tools uncommitted source edits remain. No ROS remote
+  changes occurred. Retried maptr_conv_image master push; GitLab still rejects
+  initialization because an Owner/Maintainer must create the default branch.
+
 - Requested master pushes on 2026-10-20: module committed locally on master
   as `897b898`; GitLab rejected initial push because the empty project has no
   default branch and requires an Owner/Maintainer to initialize it.
