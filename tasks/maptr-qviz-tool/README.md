@@ -14,6 +14,12 @@
 
 ## Implementation and validation
 
+- On 2026-10-20 the user confirmed that projection is fully aligned after
+  setting `image_undistorted=false` and using the four cameras' distortion
+  coefficients. Preserve this default for the current raw-image replay.
+  This is user-verified visual playback validation; actual image dimensions
+  were not independently measured during this session.
+
 - Standalone Baize module subscribes to `maptr_pointcloud` and four camera
   images, pairs source timestamps per camera, interpolates each instance once,
   projects through each camera calibration, and publishes four `bgr8` overlays.
