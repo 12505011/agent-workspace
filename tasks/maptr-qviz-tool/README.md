@@ -32,6 +32,14 @@
 
 ## Handoff
 
+- Requested master pushes on 2026-10-20: module committed locally on master
+  as `897b898`; GitLab rejected initial push because the empty project has no
+  default branch and requires an Owner/Maintainer to initialize it.
+- ROS bridge committed separately as `2d4af75` on top of origin/master
+  `b542924`, local branch `maptr-qviz-overlay-20261020`. GitLab rejected master
+  push because the branch is protected. Original ros_tools worktree changes,
+  including unrelated edits, were preserved. Neither remote was updated.
+
 - User confirmed on 2026-10-20 that the actual playback images are distorted.
   Changed the module default `image_undistorted` to false so OpenCV uses each
   camera's profile distortion coefficients. All four active profiles have
