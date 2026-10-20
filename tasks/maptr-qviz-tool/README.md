@@ -26,6 +26,17 @@
 
 ## Handoff
 
+- Projection reference reviewed: `code/maptr/tools/3dod_maptr/maptr_visualize.py`,
+  especially `project_points_to_image`, `raw_image_lidar2img`, and
+  `draw_camera_overlay`. It projects with the exact source-image matrix and
+  does not apply network image augmentation to the original image.
+- Numerical comparison on 2026-10-20 used the four active camera calibrations,
+  a 960x768 image (half-size K), and z=0. Reference versus current module
+  projection differed by less than 0.0003 pixels on visible test points.
+  This verifies formula equivalence under those assumptions, not alignment
+  on real images. Actual replay image geometry and synchronization remain
+  to be checked; no replay process was active during this check.
+
 - On 2026-10-20, added the four overlay topic registrations to `ros_tools`'s
   `src/visualization_assist/vis_assisant.cpp`. Built target `visassist` in
   container `baize-welldriver-wviz-1` with ROS/interface setup sourced and
