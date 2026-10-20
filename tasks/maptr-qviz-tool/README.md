@@ -26,6 +26,14 @@
 
 ## Handoff
 
+- User confirmed on 2026-10-20 that the actual playback images are distorted.
+  Changed the module default `image_undistorted` to false so OpenCV uses each
+  camera's profile distortion coefficients. All four active profiles have
+  distortion_type=0 and eight coefficients (rational pinhole model).
+  The earlier zero-distortion numerical comparison did not test this image
+  geometry. Playback's camera_undistort tag alone is insufficient evidence
+  of rectification. Image resolution still needs direct frame verification.
+
 - Projection reference reviewed: `code/maptr/tools/3dod_maptr/maptr_visualize.py`,
   especially `project_points_to_image`, `raw_image_lidar2img`, and
   `draw_camera_overlay`. It projects with the exact source-image matrix and
