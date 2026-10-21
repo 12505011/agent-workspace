@@ -1,5 +1,53 @@
 # Task: Shared-BEV OD + Map multitask deployment
 
+## MapTR 输出接口约定（2026-10-13）
+
+`maptr_pointcloud` 固定使用32字节、16字节对齐的 MapTRPoint。
+详见 [字段偏移、类型、置信度量化和接收端适配要求](MAPTR_OUTPUT_CONTRACT.md)。
+
+## Stage1 fusion OD-only local visual acceptance (2026-10-12)
+
+User confirms the deployed stage1 fusion OD-only **epoch11** visualization
+looks normal, without observed phantom detections. This is three-camera+LiDAR
+fusion, not the pure-LiDAR epoch8 initializer and not stage2 joint OD+MAP.
+See [exact model, deployment and visual-check scope](STAGE1_ODONLY_LOCAL_ACCEPTANCE_2026-10-12.md).
+The log confirms MAPdisabled and110frames with zero MAPinstances; visible
+lane lines came from recorded player output. Exclude recorded MAP/OD topics
+before treating a replay as an isolated model comparison.
+
+## CY MAP best epoch1 local export (2026-10-12)
+
+See [CY MAP best1 local ONNX/RTX3060 engines](EXPORT_CY_MAP_BEST1_LOCAL_2026-10-12.md).
+Six graphs and five mixed-precision engines pass structural/module numerical
+checks. The new MAP neck consumes pre-OD-decoder fused_bev256, not middle512;
+the separate local runtime/profile integration is now committed on
+`release-test-mapod-share-model-5.8-1012-cymap` in both repositories.
+See [integration, branch commits and user build/replay handoff](INTEGRATE_CY_MAP_LOCAL_2026-10-12.md).
+Old release branches were pushed first and remain the fallback. New branches
+are local only; compilation and actual playback acceptance remain pending.
+Orin bundles are untouched.
+
+## Latest checkpoint export (2026-10-08)
+
+See [epoch11 ONNX and 98 Orin build](EXPORT_EPOCH11_2026-10-08.md) for the
+verified user-provided checkpoint, exact actual training config, six-graph
+export, independent target artifact directory and validation status.
+Selected bundle: `build_orin_cuda114_trt8522_mixed_validated/`; all five
+dense engines pass fixed-input numerical comparison. Fuser and standard-op
+MAP compute inFP32 withFP16bindings. Sparse-runtime/recorded-data replay and
+performance acceptance are still outstanding.
+This does not install a production profile or replace the old deployment.
+
+## Latest RayTrain training evidence (2026-10-07)
+
+See [RayTrain joint epoch11 results and diagnostic handoff](TRAINING_RAYTRAIN_2026-10-07.md)
+for the user-approved visualization `job-fa6183a93a61a1b2b28e87a1`, its exact
+parent checkpoint, shared-BN/16-GPU/OD4:MAP1 recipe, full MAP validation results,
+artifact paths, and unresolved OD-only numerical failures. This experiment
+does not replace the historical deployment contract below. The MAP729 image
+phase is complete; overall OD evaluation is still pending. No commit or push
+was performed when adding this record.
+
 ## Goal
 
 Deploy the trained Shared-BEV multitask model as one runtime model with one
